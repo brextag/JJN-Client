@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "jjn-client",
+  "version": "${version}",
+  "name": "JJN Client",
+  "description": "Premium Minecraft client with Liquid Glass UI, modular mods, cosmetics and high performance features.",
+  "authors": ["JJN Client Team"],
+  "contact": {
+    "homepage": "https://github.com/brextag/JJN-Client",
+    "sources": "https://github.com/brextag/JJN-Client"
+  },
+  "license": "All Rights Reserved",
+  "icon": "assets/jjn-client/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.jjnclient.JJNClient"
+    ]
+  },
+  "mixins": [
+    "jjn-client.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.3",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
