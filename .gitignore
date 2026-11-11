@@ -1,0 +1,30 @@
+# Build
+build/
+out/
+dist/
+*.jar
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# Node
+node_modules/
+.next/
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Minecraft
+run/
+.gradle/
+gradle/
+
+# Env
+.env
+.env.local
