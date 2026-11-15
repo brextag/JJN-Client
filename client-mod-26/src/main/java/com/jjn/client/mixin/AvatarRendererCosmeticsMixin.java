@@ -1,5 +1,6 @@
 package com.jjn.client.mixin;
 
+import com.jjn.client.friends.JjnFriendsManager;
 import com.jjn.client.shop.JjnCosmeticsRenderLayer;
 import com.jjn.client.shop.JjnEconomyManager;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -33,14 +34,22 @@ public abstract class AvatarRendererCosmeticsMixin<T extends Avatar & ClientAvat
     @Inject(method = "setupRotations(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;FF)V", at = @At("TAIL"))
     private void jjn$applyEmoteBodyTransforms(AvatarRenderState state, PoseStack poseStack, float bodyRot, float scale, CallbackInfo ci) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.player == null || state.id != mc.player.getId()) {
+        if (mc == null) {
             return;
         }
-        String emoteId = JjnEconomyManager.get().getActiveEmoteId();
+        String emoteId;
+        long elapsed;
+        if (mc.player != null && state.id == mc.player.getId()) {
+            emoteId = JjnEconomyManager.get().getActiveEmoteId();
+            elapsed = JjnEconomyManager.get().getEmoteElapsedMs();
+        } else {
+            JjnFriendsManager.SyncedCosmetics sc = JjnFriendsManager.get().getCosmeticsForEntityId(state.id);
+            emoteId = sc.activeEmoteId();
+            elapsed = Math.max(0L, System.currentTimeMillis() - sc.emoteStartMs());
+        }
         if (emoteId == null || emoteId.isEmpty()) {
             return;
         }
-        long elapsed = JjnEconomyManager.get().getEmoteElapsedMs();
         float sec = (elapsed % 3000L) / 1000.0F;
 
         switch (emoteId) {

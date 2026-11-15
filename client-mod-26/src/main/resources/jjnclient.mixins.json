@@ -18,7 +18,10 @@
     "PlayerTabOverlayMixin",
     "MultiPackResourceManagerMixin",
     "PlayerModelEmoteMixin",
-    "AvatarRendererCosmeticsMixin"
+    "AvatarRendererCosmeticsMixin",
+    "MouseHandlerMixin",
+    "CameraZoomMixin",
+    "LightmapRenderStateExtractorMixin"
   ],
   "injectors": {
     "defaultRequire": 1

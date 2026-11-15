@@ -59,6 +59,12 @@ public final class JjnConfig {
     public boolean showPingServer = false;
     public boolean showBiome = false;
     public boolean showKeystrokes = false;
+    public boolean showCps = true;
+    public boolean zoomEnabled = true;
+    public boolean zoomSmoothCamera = true;
+    public boolean fullbright = false;
+    public boolean showArmorHud = true;
+    public boolean showPotionHud = true;
 
     // Waypoints
     public boolean showWaypoints = true;
@@ -159,6 +165,12 @@ public final class JjnConfig {
             showPingServer = bool(props, "showPingServer", false);
             showBiome = bool(props, "showBiome", false);
             showKeystrokes = bool(props, "showKeystrokes", false);
+            showCps = bool(props, "showCps", true);
+            zoomEnabled = bool(props, "zoomEnabled", true);
+            zoomSmoothCamera = bool(props, "zoomSmoothCamera", true);
+            fullbright = bool(props, "fullbright", false);
+            showArmorHud = bool(props, "showArmorHud", true);
+            showPotionHud = bool(props, "showPotionHud", true);
             showWaypoints = bool(props, "showWaypoints", true);
             waypointShowDistance = bool(props, "waypointShowDistance", true);
             waypointShowBeacon = bool(props, "waypointShowBeacon", true);
@@ -198,6 +210,12 @@ public final class JjnConfig {
             props.setProperty("showPingServer", String.valueOf(showPingServer));
             props.setProperty("showBiome", String.valueOf(showBiome));
             props.setProperty("showKeystrokes", String.valueOf(showKeystrokes));
+            props.setProperty("showCps", String.valueOf(showCps));
+            props.setProperty("zoomEnabled", String.valueOf(zoomEnabled));
+            props.setProperty("zoomSmoothCamera", String.valueOf(zoomSmoothCamera));
+            props.setProperty("fullbright", String.valueOf(fullbright));
+            props.setProperty("showArmorHud", String.valueOf(showArmorHud));
+            props.setProperty("showPotionHud", String.valueOf(showPotionHud));
             props.setProperty("showWaypoints", String.valueOf(showWaypoints));
             props.setProperty("waypointShowDistance", String.valueOf(waypointShowDistance));
             props.setProperty("waypointShowBeacon", String.valueOf(waypointShowBeacon));

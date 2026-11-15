@@ -2,11 +2,13 @@ package com.jjn.client.ui;
 
 import com.jjn.client.JjnClientMod;
 import com.jjn.client.JjnConfig;
+import com.jjn.client.friends.JjnFriendsManager;
 import com.jjn.client.shop.JjnCosmeticAssets;
 import com.jjn.client.shop.JjnEconomyManager;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.Model;
+import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.core.ClientAsset;
 import net.minecraft.network.chat.Component;
@@ -29,7 +31,7 @@ public final class JjnCosmetics {
     public static final Identifier CUSTOM_SKIN_ID = Identifier.fromNamespaceAndPath("jjnclient", "custom_skin");
     public static final Identifier CUSTOM_CAPE_ID = Identifier.fromNamespaceAndPath("jjnclient", "custom_cape");
 
-    // Shared preview cape hook for GuiSkinRendererMixin
+    // Shared preview cape/cosmetics hook for GuiSkinRendererMixin
     public static Model.Simple activePreviewBodyModel;
     public static Model.Simple activePreviewCapeModel;
     public static Identifier activePreviewCapeTexture;
@@ -88,6 +90,21 @@ public final class JjnCosmetics {
             JjnClientMod.LOGGER.warn("Could not load local custom skin", ex);
             return null;
         }
+    }
+
+    public static ClientAsset.Texture getCustomCapeAssetForPlayer(Minecraft mc, AbstractClientPlayer player) {
+        if (mc == null || player == null) {
+            return null;
+        }
+        if (mc.player == player) {
+            return getCustomCapeAsset(mc);
+        }
+        String name = player.getGameProfile() != null ? player.getGameProfile().name() : "";
+        JjnFriendsManager.SyncedCosmetics sc = JjnFriendsManager.get().getCosmeticsForPlayer(player.getUUID(), name);
+        if (sc.capeId() != null && !sc.capeId().isBlank()) {
+            return JjnCosmeticAssets.getShopCapeAsset(mc, sc.capeId());
+        }
+        return null;
     }
 
     public static ClientAsset.Texture getCustomCapeAsset(Minecraft mc) {

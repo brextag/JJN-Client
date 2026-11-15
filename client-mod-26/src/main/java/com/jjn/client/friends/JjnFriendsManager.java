@@ -6,6 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.jjn.client.JjnClientMod;
+import com.jjn.client.shop.JjnEconomyManager;
 import com.jjn.client.ui.JjnTitleScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ConnectScreen;
@@ -16,6 +17,7 @@ import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.HttpUtil;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.storage.LevelResource;
 
@@ -58,7 +60,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * In-game Friends, Live Activity, World Hosting (LAN / UPnP / Relay Tunnel),
- * Friend-Only Access Lock, and 1-Click World Join coordinator for MC 26.2.
+ * Friend-Only Access Lock, Cosmetic/Emote Sync, and 1-Click World Join coordinator for MC 26.2.
  */
 public final class JjnFriendsManager {
 
@@ -109,6 +111,12 @@ public final class JjnFriendsManager {
         public boolean friendsOnly = true;
         public String tunnelId = "";
         public String directEndpoint = "";
+        public String capeId = "";
+        public String backId = "";
+        public String hatId = "";
+        public String auraId = "";
+        public String activeEmoteId = "";
+        public long emoteStartMs = 0L;
         public int lanControlPort = 0;
         public String lanAddress = "";
         public long lastSeenMs = 0L;
@@ -127,6 +135,17 @@ public final class JjnFriendsManager {
             }
             return "";
         }
+    }
+
+    public record SyncedCosmetics(
+            String capeId,
+            String backId,
+            String hatId,
+            String auraId,
+            String activeEmoteId,
+            long emoteStartMs
+    ) {
+        public static final SyncedCosmetics EMPTY = new SyncedCosmetics("", "", "", "", "", 0L);
     }
 
     public static final class WorldInvite {
@@ -172,11 +191,16 @@ public final class JjnFriendsManager {
     // Relay & LAN state
     private volatile boolean relayConnected = false;
     private volatile String relayStatusText = "LAN / VPN mode (no relay set)";
+    private volatile String relayTestStatus = "";
+    private volatile boolean relayTestOk = false;
+    private volatile boolean relayTestPending = false;
     private volatile String lastNotice = "";
     private volatile long lastNoticeAtMs = 0L;
 
     private final Map<String, PeerStatus> lanPeers = new ConcurrentHashMap<>();
     private final Map<String, PeerStatus> relayPeers = new ConcurrentHashMap<>();
+    private final Map<Integer, String> entityIdToUuid = new ConcurrentHashMap<>();
+    private final Map<Integer, String> entityIdToName = new ConcurrentHashMap<>();
     private final List<WorldInvite> pendingInvites = new CopyOnWriteArrayList<>();
 
     private ServerSocket lanControlServer;
@@ -281,9 +305,9 @@ public final class JjnFriendsManager {
             if (Files.isRegularFile(file)) {
                 long mtime = Files.getLastModifiedTime(file).toMillis();
                 if (mtime > lastDiskMtime + 250) {
-                    String prevRelay = data.relayUrl;
+                    String prevRelay = getEffectiveRelayUrl();
                     loadFromDisk();
-                    if (!prevRelay.equals(data.relayUrl)) {
+                    if (!prevRelay.equals(getEffectiveRelayUrl())) {
                         closeRelaySocket();
                     }
                 }
@@ -343,6 +367,24 @@ public final class JjnFriendsManager {
                 selfState = "In Menu";
                 selfWorldOrServer = "";
             }
+        }
+
+        if (mc.level != null) {
+            entityIdToUuid.clear();
+            entityIdToName.clear();
+            for (Player p : mc.level.players()) {
+                if (p == null) continue;
+                int id = p.getId();
+                if (p.getUUID() != null) {
+                    entityIdToUuid.put(id, normalizeUuid(p.getUUID().toString()));
+                }
+                if (p.getGameProfile() != null && p.getGameProfile().name() != null) {
+                    entityIdToName.put(id, p.getGameProfile().name());
+                }
+            }
+        } else {
+            entityIdToUuid.clear();
+            entityIdToName.clear();
         }
 
         // Check launcher -> running-game join handoff
@@ -594,7 +636,7 @@ public final class JjnFriendsManager {
     // --- JOINING ---
 
     public void joinPeer(Minecraft mc, PeerStatus peer) {
-        joinPeerInternal(mc, peer, data.relayUrl);
+        joinPeerInternal(mc, peer, getEffectiveRelayUrl());
     }
 
     public void joinInvite(Minecraft mc, WorldInvite invite) {
@@ -609,7 +651,7 @@ public final class JjnFriendsManager {
         p.directEndpoint = invite.directEndpoint;
         p.hosting = true;
         p.online = true;
-        joinPeerInternal(mc, p, data.relayUrl);
+        joinPeerInternal(mc, p, getEffectiveRelayUrl());
     }
 
     private void joinPeerInternal(Minecraft mc, PeerStatus peer, String relayUrlToUse) {
@@ -619,7 +661,9 @@ public final class JjnFriendsManager {
                 boolean sameLan = isFreshLanPeer(peer.uuid);
                 String direct = peer.joinAddressFallback();
                 String tunnelId = peer.tunnelId == null ? "" : peer.tunnelId.trim();
-                String relayUrl = relayUrlToUse == null ? "" : relayUrlToUse.trim();
+                String relayUrl = (relayUrlToUse == null || relayUrlToUse.isBlank())
+                        ? getEffectiveRelayUrl()
+                        : relayUrlToUse.trim();
 
                 String targetAddr;
                 boolean isLanConn;
@@ -802,12 +846,95 @@ public final class JjnFriendsManager {
             dst.friendsOnly = src.friendsOnly;
             if (!src.tunnelId.isBlank()) dst.tunnelId = src.tunnelId;
             if (!src.directEndpoint.isBlank()) dst.directEndpoint = src.directEndpoint;
+            if ("game".equals(src.role) || !"game".equals(dst.role)) {
+                dst.capeId = src.capeId;
+                dst.backId = src.backId;
+                dst.hatId = src.hatId;
+                dst.auraId = src.auraId;
+                dst.activeEmoteId = src.activeEmoteId;
+                dst.emoteStartMs = src.emoteStartMs;
+            }
             if (src.lanControlPort > 0) {
                 dst.lanControlPort = src.lanControlPort;
                 dst.lanAddress = src.lanAddress;
             }
             dst.lastSeenMs = Math.max(dst.lastSeenMs, src.lastSeenMs);
         }
+    }
+
+    public SyncedCosmetics getCosmeticsForEntityId(int entityId) {
+        return getCosmeticsForPlayer(parseUuidOrNull(entityIdToUuid.get(entityId)), entityIdToName.get(entityId));
+    }
+
+    public SyncedCosmetics getCosmeticsForPlayer(UUID uuid, String username) {
+        String norm = uuid == null ? "" : normalizeUuid(uuid.toString());
+        if (!norm.isEmpty() && norm.equals(selfUuid)) {
+            JjnEconomyManager eco = JjnEconomyManager.get();
+            JjnEconomyManager.EconomyData d = eco.snapshot();
+            String em = eco.getActiveEmoteId();
+            long start = (em == null || em.isEmpty()) ? 0L : (System.currentTimeMillis() - eco.getEmoteElapsedMs());
+            return new SyncedCosmetics(
+                    d.equippedCapeId == null ? "" : d.equippedCapeId,
+                    d.equippedBackId == null ? "" : d.equippedBackId,
+                    d.equippedHatId == null ? "" : d.equippedHatId,
+                    d.equippedAuraId == null ? "" : d.equippedAuraId,
+                    em == null ? "" : em,
+                    start
+            );
+        }
+
+        PeerStatus match = findBestOnlinePeer(norm, username);
+        if (match == null) {
+            return SyncedCosmetics.EMPTY;
+        }
+        long now = System.currentTimeMillis();
+        String emote = match.activeEmoteId == null ? "" : match.activeEmoteId;
+        if (!emote.isEmpty() && now - match.emoteStartMs > 3400L) {
+            emote = "";
+        }
+        return new SyncedCosmetics(
+                match.capeId == null ? "" : match.capeId,
+                match.backId == null ? "" : match.backId,
+                match.hatId == null ? "" : match.hatId,
+                match.auraId == null ? "" : match.auraId,
+                emote,
+                match.emoteStartMs
+        );
+    }
+
+    private PeerStatus findBestOnlinePeer(String normUuid, String username) {
+        long now = System.currentTimeMillis();
+        PeerStatus best = null;
+        for (PeerStatus lp : lanPeers.values()) {
+            if (!lp.online || now - lp.lastSeenMs > 10_000) continue;
+            if (matchesPeer(lp, normUuid, username)) {
+                if (best == null || ("game".equals(lp.role) && !"game".equals(best.role))) {
+                    best = lp;
+                }
+            }
+        }
+        for (PeerStatus rp : relayPeers.values()) {
+            if (!rp.online) continue;
+            if (matchesPeer(rp, normUuid, username)) {
+                if (best == null || ("game".equals(rp.role) && !"game".equals(best.role))) {
+                    best = rp;
+                }
+            }
+        }
+        return best;
+    }
+
+    private static boolean matchesPeer(PeerStatus p, String normUuid, String username) {
+        if (p == null) return false;
+        if (normUuid != null && !normUuid.isEmpty() && normUuid.equals(p.uuid)) return true;
+        return username != null && !username.isBlank() && username.equalsIgnoreCase(p.username);
+    }
+
+    public void notifyCosmeticsOrEmoteChanged() {
+        pool.submit(() -> {
+            sendLanBeacon();
+            sendRelayHeartbeat();
+        });
     }
 
     public boolean isFreshLanPeer(String uuid) {
@@ -846,12 +973,73 @@ public final class JjnFriendsManager {
         return data.relayUrl == null ? "" : data.relayUrl;
     }
 
+    public String getEffectiveRelayUrl() {
+        if (data.relayUrl != null && !data.relayUrl.isBlank()) return data.relayUrl.trim();
+        String prop = System.getProperty("jjn.relay.url");
+        if (prop != null && !prop.isBlank()) return prop.trim();
+        String env = System.getenv("JJN_RELAY_URL");
+        return env != null && !env.isBlank() ? env.trim() : "";
+    }
+
     public void setRelayUrl(String url) {
         data.relayUrl = url == null ? "" : url.trim();
         saveToDisk();
         closeRelaySocket();
-        relayStatusText = data.relayUrl.isBlank() ? "LAN / VPN mode (no relay set)" : "Connecting to " + data.relayUrl + "...";
-        setNotice(data.relayUrl.isBlank() ? "Switched to LAN / VPN mode." : "Relay updated: " + data.relayUrl);
+        String eff = getEffectiveRelayUrl();
+        relayStatusText = eff.isBlank() ? "LAN / VPN mode (no relay set)" : "Connecting to " + eff + "...";
+        setNotice(eff.isBlank() ? "Switched to LAN / VPN mode." : "Relay updated: " + eff);
+    }
+
+    public void testRelayConnection(String rawUrl) {
+        String candidate = (rawUrl != null && !rawUrl.isBlank()) ? rawUrl.trim() : getEffectiveRelayUrl();
+        String[] hp = parseHostPort(candidate);
+        if (hp == null) {
+            relayTestPending = false;
+            relayTestOk = false;
+            relayTestStatus = "Enter a Relay address like host:25580 first.";
+            return;
+        }
+        relayTestPending = true;
+        relayTestOk = false;
+        relayTestStatus = "Pinging " + hp[0] + ":" + hp[1] + "...";
+        pool.submit(() -> {
+            long start = System.nanoTime();
+            try (Socket sock = new Socket()) {
+                sock.connect(new InetSocketAddress(hp[0], Integer.parseInt(hp[1])), 4000);
+                sock.setSoTimeout(4000);
+                sock.getOutputStream().write("PING\n".getBytes(StandardCharsets.UTF_8));
+                sock.getOutputStream().flush();
+                String reply = readLineRaw(sock.getInputStream(), 256);
+                long ms = Math.max(1L, (System.nanoTime() - start) / 1_000_000L);
+                if (reply != null && reply.startsWith("PONG jjn-relay")) {
+                    String[] parts = reply.trim().split("\\s+");
+                    String online = parts.length >= 3 ? parts[2] : "0";
+                    String tunnels = parts.length >= 4 ? parts[3] : "0";
+                    relayTestOk = true;
+                    relayTestStatus = "Reachable in " + ms + " ms • " + online + " online • " + tunnels + " tunnel(s)";
+                } else {
+                    relayTestOk = true;
+                    relayTestStatus = "TCP reachable in " + ms + " ms (" + hp[0] + ":" + hp[1] + ")";
+                }
+            } catch (Exception ex) {
+                relayTestOk = false;
+                relayTestStatus = "Failed: " + ex.getMessage();
+            } finally {
+                relayTestPending = false;
+            }
+        });
+    }
+
+    public String getRelayTestStatus() {
+        return relayTestStatus;
+    }
+
+    public boolean isRelayTestOk() {
+        return relayTestOk;
+    }
+
+    public boolean isRelayTestPending() {
+        return relayTestPending;
     }
 
     public boolean isRelayConnected() {
@@ -1104,6 +1292,15 @@ public final class JjnFriendsManager {
                         ps.friendsOnly = !obj.has("friendsOnly") || obj.get("friendsOnly").getAsBoolean();
                         ps.tunnelId = str(obj, "tunnelId");
                         ps.directEndpoint = str(obj, "directEndpoint");
+                        ps.capeId = str(obj, "capeId");
+                        ps.backId = str(obj, "backId");
+                        ps.hatId = str(obj, "hatId");
+                        ps.auraId = str(obj, "auraId");
+                        ps.activeEmoteId = str(obj, "activeEmoteId");
+                        if (!ps.activeEmoteId.isEmpty() && obj.has("emoteAgeMs")) {
+                            long age = Math.max(0L, obj.get("emoteAgeMs").getAsLong());
+                            ps.emoteStartMs = System.currentTimeMillis() - age;
+                        }
                         ps.lanControlPort = obj.has("controlPort") ? obj.get("controlPort").getAsInt() : 0;
                         ps.lanAddress = pkt.getAddress().getHostAddress();
                         ps.lastSeenMs = System.currentTimeMillis();
@@ -1132,6 +1329,7 @@ public final class JjnFriendsManager {
             obj.addProperty("tunnelId", hostedTunnelId);
             obj.addProperty("directEndpoint", hostedDirectEndpoint);
             obj.addProperty("controlPort", lanControlPort);
+            appendSelfCosmetics(obj);
             byte[] bytes = COMPACT_GSON.toJson(obj).getBytes(StandardCharsets.UTF_8);
             InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
             ds.send(new DatagramPacket(bytes, bytes.length, group, DISCOVERY_PORT));
@@ -1144,7 +1342,7 @@ public final class JjnFriendsManager {
     private void startRelayLoop() {
         pool.submit(() -> {
             while (running) {
-                String url = data.relayUrl == null ? "" : data.relayUrl.trim();
+                String url = getEffectiveRelayUrl();
                 if (url.isEmpty() || selfUuid.isEmpty() || selfUsername.isEmpty()) {
                     relayConnected = false;
                     try { Thread.sleep(2000); } catch (InterruptedException ignored) { break; }
@@ -1176,7 +1374,7 @@ public final class JjnFriendsManager {
                         if (!line.isBlank()) handleRelayMessage(line, hp[0], Integer.parseInt(hp[1]));
                     }
                 } catch (Exception ignored) {
-                    relayStatusText = "Relay offline — LAN / VPN mode active";
+                    relayStatusText = "Relay offline (" + hp[0] + ":" + hp[1] + ") — LAN / VPN mode active";
                 } finally {
                     relayConnected = false;
                     relaySocket = null;
@@ -1209,6 +1407,15 @@ public final class JjnFriendsManager {
                         ps.friendsOnly = !f.has("friendsOnly") || f.get("friendsOnly").getAsBoolean();
                         ps.tunnelId = str(f, "tunnelId");
                         ps.directEndpoint = str(f, "directEndpoint");
+                        ps.capeId = str(f, "capeId");
+                        ps.backId = str(f, "backId");
+                        ps.hatId = str(f, "hatId");
+                        ps.auraId = str(f, "auraId");
+                        ps.activeEmoteId = str(f, "activeEmoteId");
+                        if (!ps.activeEmoteId.isEmpty() && f.has("emoteAgeMs")) {
+                            long age = Math.max(0L, f.get("emoteAgeMs").getAsLong());
+                            ps.emoteStartMs = System.currentTimeMillis() - age;
+                        }
                         ps.lastSeenMs = System.currentTimeMillis();
                         next.put(ps.uuid, ps);
 
@@ -1323,6 +1530,7 @@ public final class JjnFriendsManager {
         hello.addProperty("friendsOnly", hostedFriendsOnly);
         hello.addProperty("tunnelId", hostedTunnelId);
         hello.addProperty("directEndpoint", hostedDirectEndpoint);
+        appendSelfCosmetics(hello);
         sendRelayJson(hello);
     }
 
@@ -1338,7 +1546,23 @@ public final class JjnFriendsManager {
         hb.addProperty("friendsOnly", hostedFriendsOnly);
         hb.addProperty("tunnelId", hostedTunnelId);
         hb.addProperty("directEndpoint", hostedDirectEndpoint);
+        appendSelfCosmetics(hb);
         sendRelayJson(hb);
+    }
+
+    private void appendSelfCosmetics(JsonObject obj) {
+        try {
+            JjnEconomyManager eco = JjnEconomyManager.get();
+            JjnEconomyManager.EconomyData d = eco.snapshot();
+            obj.addProperty("capeId", d.equippedCapeId == null ? "" : d.equippedCapeId);
+            obj.addProperty("backId", d.equippedBackId == null ? "" : d.equippedBackId);
+            obj.addProperty("hatId", d.equippedHatId == null ? "" : d.equippedHatId);
+            obj.addProperty("auraId", d.equippedAuraId == null ? "" : d.equippedAuraId);
+            String em = eco.getActiveEmoteId();
+            obj.addProperty("activeEmoteId", em == null ? "" : em);
+            obj.addProperty("emoteAgeMs", (em == null || em.isEmpty()) ? 0L : Math.max(0L, eco.getEmoteElapsedMs()));
+        } catch (Exception ignored) {
+        }
     }
 
     private synchronized void sendRelayJson(JsonObject obj) {

@@ -47,6 +47,7 @@ public class FriendsView {
     private TextField relayField;
     private TextField addFriendField;
     private Label relayStatusLabel;
+    private Label relayTestLabel;
     private Label noticeLabel;
     private VBox invitesBox;
     private VBox requestsBox;
@@ -68,12 +69,13 @@ public class FriendsView {
 
         Label netHint = UiUtils.mutedLabel(
                 "LAN & VPN (Tailscale / Radmin) work automatically with zero setup. "
-                        + "Enter a JJN Relay host:port below to play with friends anywhere over the internet."
+                        + "Enter a JJN Relay host:port below (or set JJN_RELAY_URL) to play with friends anywhere over the internet."
         );
 
-        relayField = new TextField(data.relayUrl == null ? "" : data.relayUrl);
+        String effectiveRelay = service.getEffectiveRelayUrl();
+        relayField = new TextField(data.relayUrl != null && !data.relayUrl.isBlank() ? data.relayUrl : effectiveRelay);
         relayField.getStyleClass().add("input-field");
-        relayField.setPromptText("Relay server host:port (e.g. play.yourdomain.com:25580 or empty for LAN)");
+        relayField.setPromptText("Relay server host:port (e.g. relay.yourdomain.com:25580 or empty for LAN)");
         HBox.setHgrow(relayField, Priority.ALWAYS);
 
         Button saveRelayBtn = new Button("Save & Connect");
@@ -82,23 +84,46 @@ public class FriendsView {
         saveRelayBtn.setOnAction(e -> service.setRelayUrl(relayField.getText()));
         relayField.setOnAction(e -> service.setRelayUrl(relayField.getText()));
 
+        Button testRelayBtn = UiUtils.secondaryButton("Test Relay");
+        relayTestLabel = new Label();
+        relayTestLabel.setWrapText(true);
+        relayTestLabel.setVisible(false);
+        relayTestLabel.setManaged(false);
+        testRelayBtn.setOnAction(e -> {
+            testRelayBtn.setDisable(true);
+            relayTestLabel.setStyle("-fx-text-fill: #c7d2fe; -fx-font-size: 12px; -fx-font-weight: bold;");
+            relayTestLabel.setText("Pinging Relay server...");
+            relayTestLabel.setVisible(true);
+            relayTestLabel.setManaged(true);
+            service.testRelayConnection(relayField.getText(), res -> Platform.runLater(() -> {
+                testRelayBtn.setDisable(false);
+                relayTestLabel.setStyle((res.reachable()
+                        ? "-fx-text-fill: #86efac;"
+                        : "-fx-text-fill: #fca5a5;")
+                        + " -fx-font-size: 12px; -fx-font-weight: bold;");
+                relayTestLabel.setText((res.reachable() ? "✓ " : "✕ ") + res.message());
+            }));
+        });
+
         Button clearRelayBtn = UiUtils.secondaryButton("LAN Only");
         clearRelayBtn.setOnAction(e -> {
             relayField.clear();
             service.setRelayUrl("");
+            relayTestLabel.setVisible(false);
+            relayTestLabel.setManaged(false);
         });
 
         Button relayHelpBtn = UiUtils.secondaryButton("Host Relay Info");
         relayHelpBtn.setOnAction(e -> actions.onShowRelayHelp());
 
-        HBox relayRow = new HBox(8, relayField, saveRelayBtn, clearRelayBtn, relayHelpBtn);
+        HBox relayRow = new HBox(8, relayField, saveRelayBtn, testRelayBtn, clearRelayBtn, relayHelpBtn);
         relayRow.setAlignment(Pos.CENTER_LEFT);
 
         noticeLabel = new Label();
         noticeLabel.setWrapText(true);
         noticeLabel.setStyle("-fx-text-fill: #86efac; -fx-font-size: 12px; -fx-font-weight: bold;");
 
-        VBox networkCard = new VBox(8, netTitle, relayStatusLabel, netHint, relayRow, noticeLabel);
+        VBox networkCard = new VBox(8, netTitle, relayStatusLabel, netHint, relayRow, relayTestLabel, noticeLabel);
         networkCard.setPadding(new Insets(16));
         networkCard.getStyleClass().add("panel-card");
 

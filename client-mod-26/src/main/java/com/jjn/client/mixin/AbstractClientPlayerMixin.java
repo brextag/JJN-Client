@@ -18,7 +18,7 @@ public abstract class AbstractClientPlayerMixin {
     @Inject(method = "getSkin", at = @At("RETURN"), cancellable = true)
     private void jjnclient$applyLocalSkinAndCape(CallbackInfoReturnable<PlayerSkin> cir) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.player != (Object) this) {
+        if (mc == null) {
             return;
         }
         PlayerSkin base = cir.getReturnValue();
@@ -26,9 +26,12 @@ public abstract class AbstractClientPlayerMixin {
             return;
         }
 
+        AbstractClientPlayer self = (AbstractClientPlayer) (Object) this;
+        boolean isSelf = mc.player == self;
+
         JjnConfig cfg = JjnConfig.get();
-        ClientAsset.Texture customSkin = JjnCosmetics.getCustomSkinAsset(mc);
-        ClientAsset.Texture customCape = JjnCosmetics.getCustomCapeAsset(mc);
+        ClientAsset.Texture customSkin = isSelf ? JjnCosmetics.getCustomSkinAsset(mc) : null;
+        ClientAsset.Texture customCape = JjnCosmetics.getCustomCapeAssetForPlayer(mc, self);
 
         if (customSkin == null && customCape == null) {
             return;

@@ -1,5 +1,6 @@
 package com.jjn.client.mixin;
 
+import com.jjn.client.friends.JjnFriendsManager;
 import com.jjn.client.shop.JjnCosmeticsFeatureRenderer;
 import com.jjn.client.shop.JjnEconomyManager;
 import net.minecraft.client.MinecraftClient;
@@ -32,14 +33,22 @@ public abstract class PlayerEntityRendererCosmeticsMixin
     @Inject(method = "setupTransforms(Lnet/minecraft/client/render/entity/state/PlayerEntityRenderState;Lnet/minecraft/client/util/math/MatrixStack;FF)V", at = @At("TAIL"))
     private void jjn$applyEmoteBodyTransforms(PlayerEntityRenderState state, MatrixStack matrices, float animationProgress, float bodyYaw, CallbackInfo ci) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null || mc.player == null || state.id != mc.player.getId()) {
+        if (mc == null) {
             return;
         }
-        String emoteId = JjnEconomyManager.get().getActiveEmoteId();
+        String emoteId;
+        long elapsed;
+        if (mc.player != null && state.id == mc.player.getId()) {
+            emoteId = JjnEconomyManager.get().getActiveEmoteId();
+            elapsed = JjnEconomyManager.get().getEmoteElapsedMs();
+        } else {
+            JjnFriendsManager.SyncedCosmetics sc = JjnFriendsManager.get().getCosmeticsForEntityId(state.id);
+            emoteId = sc.activeEmoteId();
+            elapsed = Math.max(0L, System.currentTimeMillis() - sc.emoteStartMs());
+        }
         if (emoteId == null || emoteId.isEmpty()) {
             return;
         }
-        long elapsed = JjnEconomyManager.get().getEmoteElapsedMs();
         float sec = (elapsed % 3000L) / 1000.0F;
 
         switch (emoteId) {

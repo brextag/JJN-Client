@@ -45,7 +45,12 @@ public class JjnModMenuScreen extends Screen {
         BIOME("Biome Display", "Shows the biome name of your current location."),
         KEYSTROKES("Keystrokes HUD", "Renders live WASD and Spacebar key presses."),
         WAYPOINTS("Waypoints", "Create named in-world markers with distance and edge arrows (Press U)."),
-        TITLE_SCREEN("Custom Front Screen", "Replaces the vanilla title screen with the JJN Client menu.");
+        TITLE_SCREEN("Custom Front Screen", "Replaces the vanilla title screen with the JJN Client menu."),
+        CPS("CPS Counter", "Tracks real-time left & right clicks per second on the HUD."),
+        ZOOM("Opti-Zoom [Hold C]", "Smoothly zooms in 4x while holding the C key."),
+        FULLBRIGHT("Fullbright", "Reveals caves and dark areas cleanly at full brightness."),
+        ARMOR_HUD("Armor Status HUD", "Displays equipped armor pieces and durability percentages."),
+        POTION_HUD("Potion Status HUD", "Lists active potion effects and remaining durations.");
 
         final String title;
         final String summary;
@@ -60,6 +65,7 @@ public class JjnModMenuScreen extends Screen {
     private Tab activeTab;
     private BuiltinModule customModule = null;
     private ModBridge.ModEntry detailMod = null;
+    private int moduleScrollOffset = 0;
 
     // Mods tab state
     private boolean hideInternalMods = true;
@@ -82,6 +88,7 @@ public class JjnModMenuScreen extends Screen {
 
     private String feedbackMessage = "";
 
+    private static final int MODULES_PER_PAGE = 7;
     private static final int ROWS_PER_PAGE = 4;
     private static final int COMPACT_ROWS = 3;
 
@@ -153,7 +160,7 @@ public class JjnModMenuScreen extends Screen {
         int bodyBottom = py + ph - 18;
 
         switch (activeTab) {
-            case MODULES -> initModulesTab(bodyX, bodyY, bodyW);
+            case MODULES -> initModulesTab(bodyX, bodyY, bodyW, bodyBottom);
             case HUD -> initHudTab(bodyX, bodyY, bodyW);
             case EMOTES -> initEmotesTab(bodyX, bodyY, bodyW, bodyBottom);
             case SHOP -> initShopTab(bodyX, bodyY, bodyW, bodyBottom);
@@ -176,7 +183,7 @@ public class JjnModMenuScreen extends Screen {
         ));
     }
 
-    private void initModulesTab(int x, int y, int w) {
+    private void initModulesTab(int x, int y, int w, int bodyBottom) {
         JjnConfig cfg = JjnConfig.get();
         if (customModule != null) {
             initModuleDetail(x, y, w, cfg);
@@ -184,14 +191,19 @@ public class JjnModMenuScreen extends Screen {
         }
 
         BuiltinModule[] modules = BuiltinModule.values();
-        int rowH = 23;
-        int gap = 4;
+        int maxOffset = Math.max(0, modules.length - MODULES_PER_PAGE);
+        moduleScrollOffset = Math.max(0, Math.min(maxOffset, moduleScrollOffset));
+        int end = Math.min(modules.length, moduleScrollOffset + MODULES_PER_PAGE);
+
+        int rowH = 24;
+        int gap = 5;
         int custW = 92;
         int toggleW = w - custW - 8;
 
-        for (int i = 0; i < modules.length; i++) {
+        for (int i = moduleScrollOffset; i < end; i++) {
             BuiltinModule mod = modules[i];
-            int ry = y + i * (rowH + gap);
+            int slot = i - moduleScrollOffset;
+            int ry = y + slot * (rowH + gap);
             boolean enabled = isModuleEnabled(cfg, mod);
 
             this.addRenderableWidget(new JjnButton(
@@ -214,6 +226,10 @@ public class JjnModMenuScreen extends Screen {
                     }
             ));
         }
+
+        addPagerButtons(x, bodyBottom - 20, w, moduleScrollOffset > 0, moduleScrollOffset < maxOffset,
+                () -> { moduleScrollOffset = Math.max(0, moduleScrollOffset - 1); this.rebuildWidgets(); },
+                () -> { moduleScrollOffset = Math.min(maxOffset, moduleScrollOffset + 1); this.rebuildWidgets(); });
     }
 
     private void initModuleDetail(int x, int y, int w, JjnConfig cfg) {
@@ -281,7 +297,22 @@ public class JjnModMenuScreen extends Screen {
                         }
                 ));
             }
-            case PING, BIOME, KEYSTROKES -> addHudShortcutButtons(x, cy, w, rowH, cfg);
+            case PING, BIOME, KEYSTROKES, CPS, ARMOR_HUD, POTION_HUD -> addHudShortcutButtons(x, cy, w, rowH, cfg);
+            case ZOOM -> {
+                this.addRenderableWidget(new JjnButton(
+                        x, cy, w, rowH,
+                        Component.literal("Cinematic Smooth Camera While Zooming: " + (cfg.zoomSmoothCamera ? "ON" : "OFF")),
+                        btn -> {
+                            cfg.zoomSmoothCamera = !cfg.zoomSmoothCamera;
+                            cfg.save();
+                            this.rebuildWidgets();
+                        },
+                        cfg.zoomSmoothCamera
+                ));
+            }
+            case FULLBRIGHT -> {
+                // Controlled directly by the Module Enabled toggle above
+            }
             case WAYPOINTS -> {
                 int half = (w - 8) / 2;
                 this.addRenderableWidget(new JjnButton(
@@ -956,7 +987,15 @@ public class JjnModMenuScreen extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         int delta = verticalAmount > 0 ? -1 : (verticalAmount < 0 ? 1 : 0);
         if (delta != 0) {
-            if (activeTab == Tab.MODS && detailMod == null && !filteredMods.isEmpty()) {
+            if (activeTab == Tab.MODULES && customModule == null) {
+                int max = Math.max(0, BuiltinModule.values().length - MODULES_PER_PAGE);
+                int next = Math.max(0, Math.min(max, moduleScrollOffset + delta));
+                if (next != moduleScrollOffset) {
+                    moduleScrollOffset = next;
+                    this.rebuildWidgets();
+                    return true;
+                }
+            } else if (activeTab == Tab.MODS && detailMod == null && !filteredMods.isEmpty()) {
                 int max = Math.max(0, filteredMods.size() - ROWS_PER_PAGE);
                 int next = Math.max(0, Math.min(max, modScrollOffset + delta));
                 if (next != modScrollOffset) {
@@ -1030,9 +1069,16 @@ public class JjnModMenuScreen extends Screen {
         int bodyW = pw - 28;
         int bodyBottom = py + ph - 18;
 
-        if (activeTab == Tab.MODULES && customModule != null) {
-            graphics.text(this.font, customModule.title, bodyX, bodyY + 30, 0xFFFFFFFF, true);
-            graphics.text(this.font, customModule.summary, bodyX, bodyY + 41, 0xFF9CA3AF, false);
+        if (activeTab == Tab.MODULES) {
+            if (customModule != null) {
+                graphics.text(this.font, customModule.title, bodyX, bodyY + 30, 0xFFFFFFFF, true);
+                graphics.text(this.font, customModule.summary, bodyX, bodyY + 41, 0xFF9CA3AF, false);
+            } else {
+                int total = BuiltinModule.values().length;
+                int end = Math.min(total, moduleScrollOffset + MODULES_PER_PAGE);
+                String count = String.format("Modules %d-%d of %d", moduleScrollOffset + 1, end, total);
+                graphics.centeredText(this.font, count, bodyX + bodyW / 2, bodyBottom - 14, 0xFF85899A);
+            }
         } else if (activeTab == Tab.EMOTES) {
             renderEmotesRows(graphics, bodyX, bodyY + 71, bodyW, bodyBottom);
         } else if (activeTab == Tab.SHOP) {
@@ -1284,6 +1330,11 @@ public class JjnModMenuScreen extends Screen {
             case KEYSTROKES -> cfg.showKeystrokes;
             case WAYPOINTS -> cfg.showWaypoints;
             case TITLE_SCREEN -> cfg.customTitleScreen;
+            case CPS -> cfg.showCps;
+            case ZOOM -> cfg.zoomEnabled;
+            case FULLBRIGHT -> cfg.fullbright;
+            case ARMOR_HUD -> cfg.showArmorHud;
+            case POTION_HUD -> cfg.showPotionHud;
         };
     }
 
@@ -1297,6 +1348,11 @@ public class JjnModMenuScreen extends Screen {
             case KEYSTROKES -> cfg.showKeystrokes = !cfg.showKeystrokes;
             case WAYPOINTS -> cfg.showWaypoints = !cfg.showWaypoints;
             case TITLE_SCREEN -> cfg.customTitleScreen = !cfg.customTitleScreen;
+            case CPS -> cfg.showCps = !cfg.showCps;
+            case ZOOM -> cfg.zoomEnabled = !cfg.zoomEnabled;
+            case FULLBRIGHT -> cfg.fullbright = !cfg.fullbright;
+            case ARMOR_HUD -> cfg.showArmorHud = !cfg.showArmorHud;
+            case POTION_HUD -> cfg.showPotionHud = !cfg.showPotionHud;
         }
     }
 

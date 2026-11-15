@@ -1362,9 +1362,15 @@ public class MainApp extends Application {
                    Click "Host to Friends" -> Start Hosting. JJN automatically asks your router for UPnP port mapping.
 
                 3. JJN Relay Server (Works across ANY internet / CGNAT!)
-                   Run the included Relay server on any VPS or open port 25580:
-                     gradlew :friends-relay:run --args="--port 25580"
-                   Then enter <server-ip>:25580 in both friends' Friends tab -> Save & Connect.
+                   • Docker / VPS:
+                       cd friends-relay && docker compose up -d --build
+                   • Cloud PaaS (Railway / Fly.io / Render):
+                       Deploy using friends-relay/Dockerfile, expose TCP port 25580, mount /data.
+                   • Direct Gradle / Java 21+:
+                       gradlew :friends-relay:run --args="--port 25580"
+
+                   Enter <host>:25580 in both friends' Friends tab -> click "Test Relay" -> "Save & Connect".
+                   Tip: You can also set JJN_RELAY_URL=<host>:25580 in your environment.
                 """;
         UiUtils.showInfo("How JJN Friends & World Hosting Works", msg);
     }

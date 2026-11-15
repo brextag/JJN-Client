@@ -82,6 +82,12 @@ public final class JjnRelayServer {
         String tunnelId = "";
         boolean hosting = false;
         boolean friendsOnly = true;
+        String capeId = "";
+        String backId = "";
+        String hatId = "";
+        String auraId = "";
+        String activeEmoteId = "";
+        long activeEmoteAtMs = 0L;
         long updatedAt = System.currentTimeMillis();
     }
 
@@ -131,6 +137,9 @@ public final class JjnRelayServer {
         }
     }
 
+    private volatile ServerSocket serverSocket;
+    private ScheduledExecutorService reaper;
+
     public JjnRelayServer(int port, Path dataFile) {
         this.port = port;
         this.dataFile = dataFile;
@@ -138,13 +147,24 @@ public final class JjnRelayServer {
 
     public static void main(String[] args) throws Exception {
         int port = DEFAULT_PORT;
-        String envPort = System.getenv("JJN_RELAY_PORT");
-        if (envPort != null && !envPort.isBlank()) {
+        String envPort = firstNonBlank(System.getenv("JJN_RELAY_PORT"), System.getenv("PORT"));
+        if (envPort != null) {
             try {
-                port = Integer.parseInt(envPort.trim());
+                int parsed = Integer.parseInt(envPort.trim());
+                if (parsed > 0 && parsed <= 65535) port = parsed;
             } catch (NumberFormatException ignored) {}
         }
-        Path dataFile = Paths.get("relay-data.json");
+
+        String envData = System.getenv("JJN_RELAY_DATA");
+        Path dataFile;
+        if (envData != null && !envData.isBlank()) {
+            dataFile = Paths.get(envData.trim());
+        } else if (Files.isDirectory(Paths.get("/data"))) {
+            dataFile = Paths.get("/data/relay-data.json");
+        } else {
+            dataFile = Paths.get("relay-data.json");
+        }
+
         for (int i = 0; i < args.length; i++) {
             if ("--port".equals(args[i]) && i + 1 < args.length) {
                 port = Integer.parseInt(args[++i]);
@@ -152,24 +172,54 @@ public final class JjnRelayServer {
                 dataFile = Paths.get(args[++i]);
             }
         }
-        new JjnRelayServer(port, dataFile).start();
+        JjnRelayServer server = new JjnRelayServer(port, dataFile);
+        Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "JJN-Relay-Shutdown"));
+        server.start();
+    }
+
+    public int getPort() {
+        ServerSocket ss = serverSocket;
+        return ss != null && ss.isBound() ? ss.getLocalPort() : port;
     }
 
     public void start() throws IOException {
         loadDatabase();
-        ScheduledExecutorService reaper = Executors.newSingleThreadScheduledExecutor();
+        reaper = Executors.newSingleThreadScheduledExecutor();
         reaper.scheduleAtFixedRate(this::cleanupStale, 15, 15, TimeUnit.SECONDS);
 
         try (ServerSocket server = new ServerSocket()) {
+            this.serverSocket = server;
             server.setReuseAddress(true);
             server.bind(new InetSocketAddress(port));
-            System.out.println("[JJN-Relay] Listening on TCP port " + port + " (data: " + dataFile.toAbsolutePath() + ")");
+            System.out.println("[JJN-Relay] Listening on TCP port " + server.getLocalPort()
+                    + " (data: " + dataFile.toAbsolutePath() + ")");
 
-            while (true) {
-                Socket client = server.accept();
+            while (!server.isClosed()) {
+                Socket client;
+                try {
+                    client = server.accept();
+                } catch (IOException ex) {
+                    if (server.isClosed()) break;
+                    throw ex;
+                }
                 executor.submit(() -> handleConnection(client));
             }
+        } finally {
+            this.serverSocket = null;
+            if (reaper != null) reaper.shutdownNow();
         }
+    }
+
+    public void stop() {
+        synchronized (lock) {
+            saveDatabase();
+        }
+        ServerSocket ss = serverSocket;
+        if (ss != null) {
+            try { ss.close(); } catch (IOException ignored) {}
+        }
+        if (reaper != null) reaper.shutdownNow();
+        executor.shutdownNow();
     }
 
     private void handleConnection(Socket socket) {
@@ -183,7 +233,13 @@ public final class JjnRelayServer {
             }
             firstLine = firstLine.trim();
 
-            if ("CONTROL".equals(firstLine)) {
+            if ("PING".equalsIgnoreCase(firstLine)) {
+                String pong = "PONG jjn-relay " + onlineByUuid.size() + " " + tunnelsById.size() + "\n";
+                OutputStream out = socket.getOutputStream();
+                out.write(pong.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                socket.close();
+            } else if ("CONTROL".equals(firstLine)) {
                 handleControlSession(socket, in);
             } else if (firstLine.startsWith("TUNNEL_JOIN ")) {
                 handleTunnelJoin(socket, in, firstLine.substring("TUNNEL_JOIN ".length()).trim());
@@ -220,6 +276,8 @@ public final class JjnRelayServer {
                 switch (op) {
                     case "hello" -> onHello(session, msg);
                     case "heartbeat" -> onHeartbeat(session, msg);
+                    case "cosmetics" -> onCosmeticsUpdate(session, msg);
+                    case "emote" -> onEmoteUpdate(session, msg);
                     case "add_friend" -> onAddFriend(session, msg);
                     case "accept_friend" -> onAcceptFriend(session, msg);
                     case "decline_friend" -> onDeclineFriend(session, msg);
@@ -266,6 +324,7 @@ public final class JjnRelayServer {
         session.presence.mcVersion = str(msg, "mcVersion");
         session.presence.worldOrServer = str(msg, "worldOrServer");
         session.presence.directEndpoint = str(msg, "directEndpoint");
+        applyCosmeticsFromMessage(session.presence, msg);
         session.presence.updatedAt = System.currentTimeMillis();
 
         synchronized (lock) {
@@ -289,9 +348,68 @@ public final class JjnRelayServer {
         session.presence.tunnelId = str(msg, "tunnelId");
         session.presence.hosting = msg.has("hosting") && msg.get("hosting").getAsBoolean();
         session.presence.friendsOnly = !msg.has("friendsOnly") || msg.get("friendsOnly").getAsBoolean();
+        boolean appearanceChanged = applyCosmeticsFromMessage(session.presence, msg);
         session.presence.updatedAt = System.currentTimeMillis();
 
-        sendStateToSession(session);
+        if (appearanceChanged) {
+            pushStateToFriends(session.presence.uuid);
+        } else {
+            sendStateToSession(session);
+        }
+    }
+
+    private void onCosmeticsUpdate(ControlSession session, JsonObject msg) throws IOException {
+        if (session.presence.uuid == null) return;
+        applyCosmeticsFromMessage(session.presence, msg);
+        session.presence.updatedAt = System.currentTimeMillis();
+        pushStateToFriends(session.presence.uuid);
+    }
+
+    private void onEmoteUpdate(ControlSession session, JsonObject msg) throws IOException {
+        if (session.presence.uuid == null) return;
+        String emote = str(msg, "activeEmoteId");
+        session.presence.activeEmoteId = emote;
+        session.presence.activeEmoteAtMs = emote.isEmpty() ? 0L : System.currentTimeMillis();
+        session.presence.updatedAt = System.currentTimeMillis();
+        pushStateToFriends(session.presence.uuid);
+    }
+
+    private static boolean applyCosmeticsFromMessage(PresenceState p, JsonObject msg) {
+        boolean changed = false;
+        if (msg.has("capeId")) {
+            String v = str(msg, "capeId");
+            if (!v.equals(p.capeId)) { p.capeId = v; changed = true; }
+        }
+        if (msg.has("backId")) {
+            String v = str(msg, "backId");
+            if (!v.equals(p.backId)) { p.backId = v; changed = true; }
+        }
+        if (msg.has("hatId")) {
+            String v = str(msg, "hatId");
+            if (!v.equals(p.hatId)) { p.hatId = v; changed = true; }
+        }
+        if (msg.has("auraId")) {
+            String v = str(msg, "auraId");
+            if (!v.equals(p.auraId)) { p.auraId = v; changed = true; }
+        }
+        if (msg.has("activeEmoteId")) {
+            String nextEmote = str(msg, "activeEmoteId");
+            long ageMs = msg.has("emoteAgeMs") && !msg.get("emoteAgeMs").isJsonNull()
+                    ? Math.max(0L, msg.get("emoteAgeMs").getAsLong())
+                    : 0L;
+            if (!nextEmote.equals(p.activeEmoteId)) {
+                p.activeEmoteId = nextEmote;
+                p.activeEmoteAtMs = nextEmote.isEmpty() ? 0L : (System.currentTimeMillis() - ageMs);
+                changed = true;
+            } else if (!nextEmote.isEmpty() && msg.has("emoteAgeMs")) {
+                long estimatedStart = System.currentTimeMillis() - ageMs;
+                if (Math.abs(estimatedStart - p.activeEmoteAtMs) > 600L) {
+                    p.activeEmoteAtMs = estimatedStart;
+                    changed = true;
+                }
+            }
+        }
+        return changed;
     }
 
     private void onAddFriend(ControlSession session, JsonObject msg) throws IOException {
@@ -647,6 +765,22 @@ public final class JjnRelayServer {
                     fObj.addProperty("friendsOnly", best.friendsOnly);
                     fObj.addProperty("tunnelId", best.tunnelId);
                     fObj.addProperty("directEndpoint", best.directEndpoint);
+                    fObj.addProperty("capeId", nonEmpty(best.capeId, ""));
+                    fObj.addProperty("backId", nonEmpty(best.backId, ""));
+                    fObj.addProperty("hatId", nonEmpty(best.hatId, ""));
+                    fObj.addProperty("auraId", nonEmpty(best.auraId, ""));
+                    long nowMs = System.currentTimeMillis();
+                    if (best.activeEmoteId != null && !best.activeEmoteId.isEmpty()
+                            && nowMs - best.activeEmoteAtMs <= 3600L) {
+                        fObj.addProperty("activeEmoteId", best.activeEmoteId);
+                        fObj.addProperty("emoteAgeMs", Math.max(0L, nowMs - best.activeEmoteAtMs));
+                    } else {
+                        if (best.activeEmoteId != null && !best.activeEmoteId.isEmpty()) {
+                            best.activeEmoteId = "";
+                        }
+                        fObj.addProperty("activeEmoteId", "");
+                        fObj.addProperty("emoteAgeMs", 0L);
+                    }
                     if (best.username != null && !best.username.isBlank()) {
                         fObj.addProperty("username", best.username);
                     }
@@ -807,6 +941,12 @@ public final class JjnRelayServer {
 
     private static String nonEmpty(String val, String fallback) {
         return (val == null || val.isBlank()) ? fallback : val;
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) return a;
+        if (b != null && !b.isBlank()) return b;
+        return null;
     }
 
     private static String normalizeUuid(String raw) {

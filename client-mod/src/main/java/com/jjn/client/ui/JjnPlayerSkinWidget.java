@@ -1,5 +1,8 @@
 package com.jjn.client.ui;
 
+import com.jjn.client.shop.JjnCosmeticsFeatureRenderer;
+import com.jjn.client.shop.JjnEconomyManager;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.navigation.GuiNavigation;
 import net.minecraft.client.gui.navigation.GuiNavigationPath;
@@ -25,8 +28,8 @@ import org.joml.Quaternionf;
 import java.util.function.Supplier;
 
 /**
- * Interactive 3D player model widget with cape rendering support for JJN Client (1.21.4).
- * Vanilla PlayerSkinWidget omits capes; this renders both the player model and PlayerCapeModel.
+ * Interactive 3D player model widget with cape + 3D shop cosmetics rendering support for JJN Client (1.21.4).
+ * Vanilla PlayerSkinWidget omits capes; this renders the player model, PlayerCapeModel, hats, and wings/backpacks.
  */
 public class JjnPlayerSkinWidget extends ClickableWidget {
 
@@ -87,6 +90,9 @@ public class JjnPlayerSkinWidget extends ClickableWidget {
 
         PlayerEntityModel playerModel = skin.model() == SkinTextures.Model.SLIM ? this.slimModel : this.wideModel;
         RenderLayer skinLayer = playerModel.getLayer(skin.texture());
+        MinecraftClient mc = MinecraftClient.getInstance();
+        JjnEconomyManager.EconomyData eco = JjnEconomyManager.get().snapshot();
+        double t = System.currentTimeMillis() / 1000.0;
         context.draw(vertexConsumers -> {
             playerModel.render(
                     context.getMatrices(),
@@ -101,6 +107,26 @@ public class JjnPlayerSkinWidget extends ClickableWidget {
                         vertexConsumers.getBuffer(capeLayer),
                         LightmapTextureManager.MAX_LIGHT_COORDINATE,
                         OverlayTexture.DEFAULT_UV
+                );
+            }
+            if (mc != null && eco.equippedHatId != null && !eco.equippedHatId.isEmpty()) {
+                JjnCosmeticsFeatureRenderer.renderHat(
+                        mc,
+                        eco.equippedHatId,
+                        t,
+                        context.getMatrices(),
+                        vertexConsumers,
+                        LightmapTextureManager.MAX_LIGHT_COORDINATE
+                );
+            }
+            if (mc != null && eco.equippedBackId != null && !eco.equippedBackId.isEmpty()) {
+                JjnCosmeticsFeatureRenderer.renderBack(
+                        mc,
+                        eco.equippedBackId,
+                        t,
+                        context.getMatrices(),
+                        vertexConsumers,
+                        LightmapTextureManager.MAX_LIGHT_COORDINATE
                 );
             }
         });

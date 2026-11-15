@@ -1,6 +1,7 @@
 package com.jjn.client.mixin;
 
 import com.jjn.client.JjnConfig;
+import com.jjn.client.JjnInputState;
 import com.jjn.client.friends.JjnFriendsManager;
 import com.jjn.client.shop.JjnEconomyManager;
 import net.minecraft.client.Minecraft;
@@ -24,6 +25,7 @@ public abstract class MinecraftTickMixin {
         Minecraft mc = (Minecraft) (Object) this;
         JjnFriendsManager.get().tick(mc);
         JjnEconomyManager.get().tick(mc);
+        JjnInputState.updateZoomTick(mc);
 
         if (!JjnConfig.get().toggleSprint || this.player == null) {
             return;

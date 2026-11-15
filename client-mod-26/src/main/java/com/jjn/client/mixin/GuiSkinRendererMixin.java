@@ -1,7 +1,10 @@
 package com.jjn.client.mixin;
 
+import com.jjn.client.shop.JjnCosmeticsRenderLayer;
+import com.jjn.client.shop.JjnEconomyManager;
 import com.jjn.client.ui.JjnCosmetics;
 import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.render.pip.GuiSkinRenderer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.state.gui.pip.GuiSkinRenderState;
@@ -25,9 +28,11 @@ public abstract class GuiSkinRendererMixin {
             SubmitNodeCollector submitNodeCollector,
             CallbackInfo ci
     ) {
-        if (state.playerModel() == JjnCosmetics.activePreviewBodyModel
-                && JjnCosmetics.activePreviewCapeModel != null
-                && JjnCosmetics.activePreviewCapeTexture != null) {
+        if (state.playerModel() != JjnCosmetics.activePreviewBodyModel) {
+            return;
+        }
+
+        if (JjnCosmetics.activePreviewCapeModel != null && JjnCosmetics.activePreviewCapeTexture != null) {
             submitNodeCollector.submitModel(
                     JjnCosmetics.activePreviewCapeModel,
                     Unit.INSTANCE,
@@ -38,6 +43,18 @@ public abstract class GuiSkinRendererMixin {
                     0,
                     null
             );
+        }
+
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null) {
+            JjnEconomyManager.EconomyData eco = JjnEconomyManager.get().snapshot();
+            double t = System.currentTimeMillis() / 1000.0;
+            if (eco.equippedHatId != null && !eco.equippedHatId.isEmpty()) {
+                JjnCosmeticsRenderLayer.renderHat(mc, eco.equippedHatId, t, poseStack, submitNodeCollector, 15728880);
+            }
+            if (eco.equippedBackId != null && !eco.equippedBackId.isEmpty()) {
+                JjnCosmeticsRenderLayer.renderBack(mc, eco.equippedBackId, t, poseStack, submitNodeCollector, 15728880);
+            }
         }
     }
 }

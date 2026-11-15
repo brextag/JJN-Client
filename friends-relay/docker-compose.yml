@@ -1,0 +1,15 @@
+services:
+  jjn-friends-relay:
+    build: .
+    container_name: jjn-friends-relay
+    restart: unless-stopped
+    ports:
+      - "${JJN_RELAY_PORT:-25580}:25580"
+    environment:
+      JJN_RELAY_PORT: "25580"
+      JJN_RELAY_DATA: "/data/relay-data.json"
+    volumes:
+      - jjn_relay_data:/data
+
+volumes:
+  jjn_relay_data:

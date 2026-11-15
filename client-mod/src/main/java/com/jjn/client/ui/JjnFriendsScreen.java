@@ -49,7 +49,10 @@ public class JjnFriendsScreen extends Screen {
         super(Text.literal("JJN Friends"));
         this.parent = parent;
         this.activeTab = initialTab;
-        this.draftRelayUrl = JjnFriendsManager.get().getRelayUrl();
+        String saved = JjnFriendsManager.get().getRelayUrl();
+        this.draftRelayUrl = (saved == null || saved.isBlank())
+                ? JjnFriendsManager.get().getEffectiveRelayUrl()
+                : saved;
     }
 
     private int panelW() { return Math.min(504, this.width - 20); }
@@ -277,9 +280,9 @@ public class JjnFriendsScreen extends Screen {
         relayBox.setChangedListener(v -> draftRelayUrl = v);
         this.addDrawableChild(relayBox);
 
-        int half = (bw - 8) / 2;
+        int third = (bw - 12) / 3;
         this.addDrawableChild(new JjnButton(
-                bx, y + 30, half, 24,
+                bx, y + 30, third, 24,
                 Text.literal("SAVE & CONNECT"),
                 btn -> {
                     mgr.setRelayUrl(relayBox != null ? relayBox.getText() : draftRelayUrl);
@@ -289,8 +292,19 @@ public class JjnFriendsScreen extends Screen {
         ));
 
         this.addDrawableChild(new JjnButton(
-                bx + half + 8, y + 30, half, 24,
-                Text.literal("Clear (LAN / VPN Only)"),
+                bx + third + 6, y + 30, third, 24,
+                Text.literal("TEST RELAY"),
+                btn -> {
+                    String url = relayBox != null ? relayBox.getText() : draftRelayUrl;
+                    mgr.testRelayConnection(url);
+                    this.clearAndInit();
+                },
+                true
+        ));
+
+        this.addDrawableChild(new JjnButton(
+                bx + (third + 6) * 2, y + 30, bw - (third + 6) * 2, 24,
+                Text.literal("LAN / VPN Only"),
                 btn -> {
                     draftRelayUrl = "";
                     mgr.setRelayUrl("");
@@ -335,7 +349,7 @@ public class JjnFriendsScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
-        if (++tickCounter % 20 == 0) {
+        if (++tickCounter % 15 == 0) {
             if ((addFriendBox == null || !addFriendBox.isFocused())
                     && (relayBox == null || !relayBox.isFocused())) {
                 JjnFriendsManager mgr = JjnFriendsManager.get();
@@ -350,6 +364,7 @@ public class JjnFriendsScreen extends Screen {
     private String buildSignature(JjnFriendsManager mgr) {
         StringBuilder sb = new StringBuilder();
         sb.append(mgr.isRelayConnected()).append('|').append(mgr.isHosting()).append('|')
+                .append(mgr.isRelayTestPending()).append('|').append(mgr.getRelayTestStatus()).append('|')
                 .append(mgr.getPendingInvites().size()).append('|').append(mgr.getIncomingRequests().size())
                 .append('|').append(mgr.getNearbyLanPlayers().size()).append('|');
         for (JjnFriendsManager.PeerStatus p : mgr.getFriendsWithStatus()) {
@@ -521,14 +536,19 @@ public class JjnFriendsScreen extends Screen {
 
     private void renderRelayInfo(DrawContext context, JjnFriendsManager mgr, int bx, int bw, int py) {
         context.drawText(this.textRenderer, "JJN Relay Server Address (host:port)", bx, py + 68, 0xFFE5E7EB, true);
-        int boxY = py + 152;
-        context.fill(bx, boxY, bx + bw, boxY + 92, 0xDD14161D);
-        context.drawBorder(bx, boxY, bw, 92, 0xFF353949);
+        String testMsg = mgr.getRelayTestStatus();
+        if (testMsg != null && !testMsg.isBlank()) {
+            int testColor = mgr.isRelayTestPending() ? 0xFFC7D2FE : (mgr.isRelayTestOk() ? 0xFF86EFAC : 0xFFFCA5A5);
+            context.drawText(this.textRenderer, trimToWidth(testMsg, bw), bx, py + 140, testColor, false);
+        }
+        int boxY = py + 156;
+        context.fill(bx, boxY, bx + bw, boxY + 96, 0xDD14161D);
+        context.drawBorder(bx, boxY, bw, 96, 0xFF353949);
         context.drawText(this.textRenderer, "How World Hosting Works:", bx + 10, boxY + 10, 0xFFC7D2FE, true);
         context.drawText(this.textRenderer, "• Same Wi-Fi / LAN / Tailscale / Radmin: Works automatically with empty Relay.", bx + 10, boxY + 28, 0xFFD1D5DB, false);
         context.drawText(this.textRenderer, "• UPnP: Pause Menu -> 'Host to Friends' opens router port automatically.", bx + 10, boxY + 44, 0xFFD1D5DB, false);
-        context.drawText(this.textRenderer, "• Cross-Internet Relay: Run ':friends-relay' (port 25580) & enter IP:port above.", bx + 10, boxY + 60, 0xFFD1D5DB, false);
-        context.drawText(this.textRenderer, "Current status: " + mgr.getRelayStatusText(), bx + 10, boxY + 75,
+        context.drawText(this.textRenderer, "• Cloud Relay: Docker / Railway / Fly.io ('friends-relay/') on port 25580.", bx + 10, boxY + 60, 0xFFD1D5DB, false);
+        context.drawText(this.textRenderer, trimToWidth("Status: " + mgr.getRelayStatusText(), bw - 20), bx + 10, boxY + 76,
                 mgr.isRelayConnected() ? 0xFF86EFAC : 0xFF9CA3AF, false);
     }
 

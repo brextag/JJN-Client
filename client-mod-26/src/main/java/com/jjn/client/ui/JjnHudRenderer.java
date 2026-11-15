@@ -1,19 +1,31 @@
 package com.jjn.client.ui;
 
 import com.jjn.client.JjnConfig;
+import com.jjn.client.JjnInputState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffectUtil;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Shared JJN HUD & Keystrokes renderer used both in-game (InGameHudMixin) and
- * as a live draggable preview inside JjnHudEditorScreen.
+ * Shared JJN HUD, Keystrokes, CPS, Armor Status, and Potion Status renderer for MC 26.2.
  */
 public final class JjnHudRenderer {
+
+    private static final EquipmentSlot[] ARMOR_SLOTS = {
+            EquipmentSlot.HEAD,
+            EquipmentSlot.CHEST,
+            EquipmentSlot.LEGS,
+            EquipmentSlot.FEET
+    };
 
     private JjnHudRenderer() {}
 
@@ -23,16 +35,25 @@ public final class JjnHudRenderer {
         }
     }
 
+    private record ArmorEntry(ItemStack stack, int durabilityPct, boolean damageable) {}
+
+    private record PotionEntry(String label, int color) {}
+
     public static Bounds renderHud(GuiGraphicsExtractor graphics, Minecraft mc, boolean previewMode) {
         JjnConfig cfg = JjnConfig.get();
         if ((!cfg.showHud && !previewMode) || mc == null) {
             return new Bounds(0, 0, 0, 0);
         }
 
+        int screenW = mc.getWindow().getGuiScaledWidth();
+        int screenH = mc.getWindow().getGuiScaledHeight();
+
         List<String> lines = buildLines(mc, cfg, previewMode);
         boolean hasKeystrokes = cfg.showKeystrokes;
         if (lines.isEmpty() && !hasKeystrokes) {
             if (!previewMode) {
+                renderArmorHud(graphics, mc, cfg, false, screenW, screenH, 0, 0, 0, 0);
+                renderPotionHud(graphics, mc, cfg, false, screenW, screenH, 0, 0, 0, 0);
                 return new Bounds(0, 0, 0, 0);
             }
             lines.add("JJN Client HUD");
@@ -66,9 +87,6 @@ public final class JjnHudRenderer {
         int scaledW = Math.round(rawW * scale);
         int scaledH = Math.round(rawH * scale);
 
-        int screenW = mc.getWindow().getGuiScaledWidth();
-        int screenH = mc.getWindow().getGuiScaledHeight();
-
         int[] pos = computeOrigin(cfg, screenW, screenH, scaledW, scaledH);
         int originX = pos[0];
         int originY = pos[1];
@@ -99,6 +117,10 @@ public final class JjnHudRenderer {
         }
 
         pose.popMatrix();
+
+        renderArmorHud(graphics, mc, cfg, previewMode, screenW, screenH, originX, originY, scaledW, scaledH);
+        renderPotionHud(graphics, mc, cfg, previewMode, screenW, screenH, originX, originY, scaledW, scaledH);
+
         return new Bounds(originX, originY, scaledW, scaledH);
     }
 
@@ -107,6 +129,12 @@ public final class JjnHudRenderer {
         if (cfg.showFps) {
             int fps = mc.getFps();
             lines.add(cfg.fpsCompact ? (fps + " FPS") : ("FPS: " + fps));
+        }
+
+        if (cfg.showCps) {
+            int lmb = previewMode ? 9 : JjnInputState.getLeftCps();
+            int rmb = previewMode ? 3 : JjnInputState.getRightCps();
+            lines.add("CPS: " + lmb + " | " + rmb);
         }
 
         if (cfg.showCoords) {
@@ -155,6 +183,158 @@ public final class JjnHudRenderer {
             }
         }
         return lines;
+    }
+
+    private static void renderArmorHud(
+            GuiGraphicsExtractor graphics,
+            Minecraft mc,
+            JjnConfig cfg,
+            boolean previewMode,
+            int screenW,
+            int screenH,
+            int mainX,
+            int mainY,
+            int mainW,
+            int mainH
+    ) {
+        if (!cfg.showArmorHud) {
+            return;
+        }
+        List<ArmorEntry> entries = new ArrayList<>();
+        if (mc.player != null) {
+            for (EquipmentSlot slot : ARMOR_SLOTS) {
+                ItemStack stack = mc.player.getItemBySlot(slot);
+                if (!stack.isEmpty()) {
+                    boolean dmg = stack.isDamageableItem() && stack.getMaxDamage() > 0;
+                    int pct = dmg
+                            ? Math.max(0, Math.min(100, Math.round(100.0F * (stack.getMaxDamage() - stack.getDamageValue()) / stack.getMaxDamage())))
+                            : 100;
+                    entries.add(new ArmorEntry(stack, pct, dmg));
+                }
+            }
+        }
+        if (entries.isEmpty() && previewMode) {
+            entries.add(new ArmorEntry(new ItemStack(Items.DIAMOND_HELMET), 88, true));
+            entries.add(new ArmorEntry(new ItemStack(Items.DIAMOND_CHESTPLATE), 74, true));
+            entries.add(new ArmorEntry(new ItemStack(Items.DIAMOND_LEGGINGS), 92, true));
+            entries.add(new ArmorEntry(new ItemStack(Items.DIAMOND_BOOTS), 65, true));
+        }
+        if (entries.isEmpty()) {
+            return;
+        }
+
+        var font = mc.font;
+        int rowH = 19;
+        int cardW = 54;
+        int cardH = entries.size() * rowH + 6;
+        int x = 8;
+        int y = Math.max(8, (screenH - cardH) / 2);
+
+        if (mainW > 0 && mainX < x + cardW + 6 && y < mainY + mainH + 6 && y + cardH > mainY - 6) {
+            if (mainY + mainH + 8 + cardH <= screenH - 8) {
+                y = mainY + mainH + 8;
+            } else {
+                x = screenW - cardW - 8;
+            }
+        }
+
+        int bg = (cfg.backgroundArgb() >>> 24) > 0 ? cfg.backgroundArgb() : 0xA815171E;
+        int accent = cfg.accentColor();
+        graphics.fill(x, y, x + cardW, y + cardH, bg);
+        graphics.fill(x, y, x + 2, y + cardH, accent);
+        graphics.outline(x, y, cardW, cardH, 0xFF353949);
+
+        for (int i = 0; i < entries.size(); i++) {
+            ArmorEntry e = entries.get(i);
+            int ry = y + 3 + i * rowH;
+            graphics.item(e.stack(), x + 5, ry + 1);
+
+            String label = e.damageable() ? (e.durabilityPct() + "%") : "--";
+            int color = e.durabilityPct() >= 50 ? 0xFF86EFAC : (e.durabilityPct() >= 20 ? 0xFFFCD34D : 0xFFFCA5A5);
+            graphics.text(font, label, x + 24, ry + 4, color, cfg.hudTextShadow);
+
+            if (e.damageable()) {
+                int barX = x + 24;
+                int barY = ry + 14;
+                int barW = 24;
+                graphics.fill(barX, barY, barX + barW, barY + 2, 0xFF101116);
+                int fillW = Math.max(1, Math.round(barW * (e.durabilityPct() / 100.0F)));
+                graphics.fill(barX, barY, barX + fillW, barY + 2, color);
+            }
+        }
+    }
+
+    private static void renderPotionHud(
+            GuiGraphicsExtractor graphics,
+            Minecraft mc,
+            JjnConfig cfg,
+            boolean previewMode,
+            int screenW,
+            int screenH,
+            int mainX,
+            int mainY,
+            int mainW,
+            int mainH
+    ) {
+        if (!cfg.showPotionHud) {
+            return;
+        }
+        List<PotionEntry> entries = new ArrayList<>();
+        if (mc.player != null) {
+            for (MobEffectInstance inst : mc.player.getActiveEffects()) {
+                String name = inst.getEffect().value().getDisplayName().getString();
+                String amp = romanAmplifier(inst.getAmplifier());
+                String dur = MobEffectUtil.formatDuration(inst, 1.0F, 20.0F).getString();
+                String label = amp.isEmpty() ? (name + "  " + dur) : (name + " " + amp + "  " + dur);
+                int col = 0xFF000000 | inst.getEffect().value().getColor();
+                entries.add(new PotionEntry(label, col));
+            }
+        }
+        if (entries.isEmpty() && previewMode) {
+            entries.add(new PotionEntry("Speed II  01:45", 0xFF38BDF8));
+            entries.add(new PotionEntry("Night Vision  04:20", 0xFFC7D2FE));
+        }
+        if (entries.isEmpty()) {
+            return;
+        }
+
+        var font = mc.font;
+        int padX = 7;
+        int rowH = 16;
+        int gap = 3;
+        int y = 8;
+
+        int maxPillW = 0;
+        for (PotionEntry pe : entries) {
+            maxPillW = Math.max(maxPillW, font.width(pe.label()) + padX * 2 + 2);
+        }
+        if (mainW > 0 && mainX + mainW > screenW - maxPillW - 14 && mainY < y + entries.size() * (rowH + gap) + 8) {
+            y = Math.min(screenH - rowH - 8, mainY + mainH + 6);
+        }
+
+        int bg = (cfg.backgroundArgb() >>> 24) > 0 ? cfg.backgroundArgb() : 0xA815171E;
+        for (int i = 0; i < entries.size(); i++) {
+            PotionEntry pe = entries.get(i);
+            int pillW = font.width(pe.label()) + padX * 2 + 2;
+            int px = screenW - pillW - 8;
+            int py = y + i * (rowH + gap);
+            if (py + rowH > screenH - 6) break;
+            graphics.fill(px, py, px + pillW, py + rowH, bg);
+            graphics.fill(px, py, px + 2, py + rowH, pe.color());
+            graphics.outline(px, py, pillW, rowH, 0xFF353949);
+            graphics.text(font, pe.label(), px + padX + 1, py + 4, 0xFFE5E7EB, cfg.hudTextShadow);
+        }
+    }
+
+    private static String romanAmplifier(int amplifier) {
+        return switch (amplifier) {
+            case 0 -> "";
+            case 1 -> "II";
+            case 2 -> "III";
+            case 3 -> "IV";
+            case 4 -> "V";
+            default -> String.valueOf(amplifier + 1);
+        };
     }
 
     private static void renderKeystrokes(

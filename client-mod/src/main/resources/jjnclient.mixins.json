@@ -17,7 +17,10 @@
     "PlayerListHudMixin",
     "LifecycledResourceManagerImplMixin",
     "PlayerEntityModelEmoteMixin",
-    "PlayerEntityRendererCosmeticsMixin"
+    "PlayerEntityRendererCosmeticsMixin",
+    "MouseMixin",
+    "GameRendererMixin",
+    "LightmapTextureManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

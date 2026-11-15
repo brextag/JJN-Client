@@ -40,6 +40,12 @@ public final class FriendsService {
         public boolean friendsOnly = true;
         public String tunnelId = "";
         public String directEndpoint = "";
+        public String capeId = "";
+        public String backId = "";
+        public String hatId = "";
+        public String auraId = "";
+        public String activeEmoteId = "";
+        public long emoteStartMs = 0L;
         public int lanControlPort = 0;
         public String lanAddress = "";
         public long lastSeenMs = 0L;
@@ -118,7 +124,10 @@ public final class FriendsService {
         started = true;
         data = store.load();
         lastLoadedMtime = readStoreMtime();
-        activeRelayUrl = data.relayUrl == null ? "" : data.relayUrl.trim();
+        activeRelayUrl = FriendsStore.resolveEffectiveRelayUrl(data.relayUrl);
+        if (!activeRelayUrl.isEmpty() && (data.relayUrl == null || data.relayUrl.isBlank())) {
+            relayStatusText = "Using default Relay (" + activeRelayUrl + ")...";
+        }
         startLanControlServer();
         startLanDiscoveryListener();
         startRelayLoop();
@@ -178,6 +187,20 @@ public final class FriendsService {
         return data;
     }
 
+    public String getEffectiveRelayUrl() {
+        return FriendsStore.resolveEffectiveRelayUrl(data.relayUrl);
+    }
+
+    public void testRelayConnection(String rawUrl, java.util.function.Consumer<FriendsStore.RelayTestResult> callback) {
+        String target = FriendsStore.resolveEffectiveRelayUrl(rawUrl);
+        pool.submit(() -> {
+            FriendsStore.RelayTestResult res = FriendsStore.pingRelay(target, 4000);
+            if (callback != null) {
+                callback.accept(res);
+            }
+        });
+    }
+
     public boolean isRelayConnected() {
         return relayConnected;
     }
@@ -208,7 +231,7 @@ public final class FriendsService {
     public void reloadFromDisk() {
         this.data = store.load();
         this.lastLoadedMtime = readStoreMtime();
-        String newUrl = this.data.relayUrl == null ? "" : this.data.relayUrl.trim();
+        String newUrl = FriendsStore.resolveEffectiveRelayUrl(this.data.relayUrl);
         if (!newUrl.equals(this.activeRelayUrl)) {
             this.activeRelayUrl = newUrl;
             closeRelaySocket();
@@ -221,13 +244,13 @@ public final class FriendsService {
 
     public void setRelayUrl(String rawUrl) {
         data.relayUrl = rawUrl == null ? "" : rawUrl.trim();
-        activeRelayUrl = data.relayUrl;
+        activeRelayUrl = FriendsStore.resolveEffectiveRelayUrl(data.relayUrl);
         saveStore();
         closeRelaySocket();
-        if (data.relayUrl.isBlank()) {
+        if (activeRelayUrl.isBlank()) {
             relayStatusText = "LAN / VPN mode (no relay set)";
         } else {
-            relayStatusText = "Connecting to " + data.relayUrl + "...";
+            relayStatusText = "Connecting to " + activeRelayUrl + "...";
         }
         notifyListeners();
     }
@@ -312,6 +335,14 @@ public final class FriendsService {
             dst.friendsOnly = src.friendsOnly;
             if (src.tunnelId != null && !src.tunnelId.isBlank()) dst.tunnelId = src.tunnelId;
             if (src.directEndpoint != null && !src.directEndpoint.isBlank()) dst.directEndpoint = src.directEndpoint;
+            if ("game".equals(src.role) || !"game".equals(dst.role)) {
+                dst.capeId = src.capeId;
+                dst.backId = src.backId;
+                dst.hatId = src.hatId;
+                dst.auraId = src.auraId;
+                dst.activeEmoteId = src.activeEmoteId;
+                dst.emoteStartMs = src.emoteStartMs;
+            }
             if (src.lanControlPort > 0) {
                 dst.lanControlPort = src.lanControlPort;
                 dst.lanAddress = src.lanAddress;
@@ -452,7 +483,7 @@ public final class FriendsService {
         String direct = peer.joinAddressFallback();
         boolean sameLan = isFreshLanPeer(peer.uuid);
         String tunnelId = peer.tunnelId == null ? "" : peer.tunnelId.trim();
-        String relayUrl = data.relayUrl == null ? "" : data.relayUrl.trim();
+        String relayUrl = getEffectiveRelayUrl();
 
         // If hosting via Relay and peer is NOT on the same LAN, prefer the reliable Relay TCP tunnel
         // (unless the friend is on a public Server or only directEndpoint exists).
@@ -499,7 +530,7 @@ public final class FriendsService {
             }
         }
         pj.tunnelId = peer.tunnelId == null ? "" : peer.tunnelId;
-        pj.relayUrl = data.relayUrl == null ? "" : data.relayUrl;
+        pj.relayUrl = getEffectiveRelayUrl();
         pj.createdAt = System.currentTimeMillis();
         store.writePendingJoin(pj);
         lastNotice = "Sent join request to your open Minecraft window!";
@@ -719,6 +750,15 @@ public final class FriendsService {
                         ps.friendsOnly = !obj.has("friendsOnly") || obj.get("friendsOnly").getAsBoolean();
                         ps.tunnelId = str(obj, "tunnelId");
                         ps.directEndpoint = str(obj, "directEndpoint");
+                        ps.capeId = str(obj, "capeId");
+                        ps.backId = str(obj, "backId");
+                        ps.hatId = str(obj, "hatId");
+                        ps.auraId = str(obj, "auraId");
+                        ps.activeEmoteId = str(obj, "activeEmoteId");
+                        if (!ps.activeEmoteId.isEmpty() && obj.has("emoteAgeMs")) {
+                            long age = Math.max(0L, obj.get("emoteAgeMs").getAsLong());
+                            ps.emoteStartMs = System.currentTimeMillis() - age;
+                        }
                         ps.lanControlPort = obj.has("controlPort") ? obj.get("controlPort").getAsInt() : 0;
                         ps.lanAddress = pkt.getAddress().getHostAddress();
                         ps.lastSeenMs = System.currentTimeMillis();
@@ -761,7 +801,7 @@ public final class FriendsService {
     private void startRelayLoop() {
         pool.submit(() -> {
             while (running) {
-                String url = data.relayUrl == null ? "" : data.relayUrl.trim();
+                String url = getEffectiveRelayUrl();
                 if (url.isEmpty() || selfUuid.isEmpty() || selfUsername.isEmpty()) {
                     relayConnected = false;
                     try { Thread.sleep(2000); } catch (InterruptedException ignored) { break; }
@@ -827,6 +867,15 @@ public final class FriendsService {
                         ps.friendsOnly = !f.has("friendsOnly") || f.get("friendsOnly").getAsBoolean();
                         ps.tunnelId = str(f, "tunnelId");
                         ps.directEndpoint = str(f, "directEndpoint");
+                        ps.capeId = str(f, "capeId");
+                        ps.backId = str(f, "backId");
+                        ps.hatId = str(f, "hatId");
+                        ps.auraId = str(f, "auraId");
+                        ps.activeEmoteId = str(f, "activeEmoteId");
+                        if (!ps.activeEmoteId.isEmpty() && f.has("emoteAgeMs")) {
+                            long age = Math.max(0L, f.get("emoteAgeMs").getAsLong());
+                            ps.emoteStartMs = System.currentTimeMillis() - age;
+                        }
                         ps.lastSeenMs = System.currentTimeMillis();
                         nextRelayPeers.put(ps.uuid, ps);
                         mergedFriends.add(new FriendsStore.FriendEntry(ps.uuid, ps.username, "", System.currentTimeMillis()));

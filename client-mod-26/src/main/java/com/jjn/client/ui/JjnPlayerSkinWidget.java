@@ -74,12 +74,11 @@ public class JjnPlayerSkinWidget extends AbstractWidget {
         PlayerSkin skin = this.skinSupplier.get();
         Model.Simple bodyModel = skin.model() == PlayerModelType.SLIM ? this.slimModel : this.wideModel;
 
+        JjnCosmetics.activePreviewBodyModel = bodyModel;
         if (skin.cape() != null) {
-            JjnCosmetics.activePreviewBodyModel = bodyModel;
             JjnCosmetics.activePreviewCapeModel = this.capeModel;
             JjnCosmetics.activePreviewCapeTexture = skin.cape().texturePath();
         } else {
-            JjnCosmetics.activePreviewBodyModel = null;
             JjnCosmetics.activePreviewCapeModel = null;
             JjnCosmetics.activePreviewCapeTexture = null;
         }

@@ -360,6 +360,9 @@ public final class JjnEconomyManager {
         }
         lastMessage = "Unlocked " + item.name() + "!";
         save();
+        if (item.category() != Category.EMOTE) {
+            JjnFriendsManager.get().notifyCosmeticsOrEmoteChanged();
+        }
         return true;
     }
 
@@ -375,6 +378,7 @@ public final class JjnEconomyManager {
             applyEquipInternal(item);
             lastMessage = "Equipped " + item.name() + "!";
             save();
+            JjnFriendsManager.get().notifyCosmeticsOrEmoteChanged();
         }
     }
 
@@ -387,6 +391,7 @@ public final class JjnEconomyManager {
             default -> {}
         }
         save();
+        JjnFriendsManager.get().notifyCosmeticsOrEmoteChanged();
     }
 
     private void applyEquipInternal(CatalogItem item) {
@@ -457,14 +462,19 @@ public final class JjnEconomyManager {
         incrementQuest("daily_emote", 1);
         incrementQuest("quest_emote_star", 1);
         save();
+        JjnFriendsManager.get().notifyCosmeticsOrEmoteChanged();
     }
 
     public synchronized void stopEmote(MinecraftClient mc) {
+        boolean wasActive = this.activeEmoteId != null && !this.activeEmoteId.isEmpty();
         this.activeEmoteId = "";
         this.emoteStartMs = 0L;
         if (mc != null && mc.options != null && savedPerspective != null) {
             mc.options.setPerspective(savedPerspective);
             savedPerspective = null;
+        }
+        if (wasActive) {
+            JjnFriendsManager.get().notifyCosmeticsOrEmoteChanged();
         }
     }
 
@@ -485,7 +495,12 @@ public final class JjnEconomyManager {
         if (tickCounter % 40 == 0) {
             long mtime = readMtime();
             if (mtime > 0 && mtime != lastLoadedMtime && !dirty) {
+                String prev = data.equippedCapeId + "|" + data.equippedBackId + "|" + data.equippedHatId + "|" + data.equippedAuraId;
                 reloadFromDisk();
+                String curr = data.equippedCapeId + "|" + data.equippedBackId + "|" + data.equippedHatId + "|" + data.equippedAuraId;
+                if (!prev.equals(curr)) {
+                    JjnFriendsManager.get().notifyCosmeticsOrEmoteChanged();
+                }
             }
         }
 
@@ -559,8 +574,20 @@ public final class JjnEconomyManager {
             save();
         }
 
-        // Spawn Aura & Emote particles
-        spawnCosmeticParticles(mc.world, player);
+        // Spawn Aura & Emote particles for self and synced friends
+        JjnFriendsManager fm = JjnFriendsManager.get();
+        for (PlayerEntity p : mc.world.getPlayers()) {
+            if (p == null) continue;
+            if (p == player) {
+                spawnCosmeticParticles(mc.world, p, data.equippedAuraId, getActiveEmoteId());
+            } else {
+                String name = p.getGameProfile() != null ? p.getGameProfile().getName() : "";
+                JjnFriendsManager.SyncedCosmetics sc = fm.getCosmeticsForPlayer(p.getUuid(), name);
+                if (!sc.auraId().isEmpty() || !sc.activeEmoteId().isEmpty()) {
+                    spawnCosmeticParticles(mc.world, p, sc.auraId(), sc.activeEmoteId());
+                }
+            }
+        }
     }
 
     private void incrementQuest(String questId, int delta) {
@@ -578,13 +605,12 @@ public final class JjnEconomyManager {
         }
     }
 
-    private void spawnCosmeticParticles(ClientWorld world, PlayerEntity player) {
+    private void spawnCosmeticParticles(ClientWorld world, PlayerEntity player, String aura, String emote) {
         double x = player.getX();
         double y = player.getY();
         double z = player.getZ();
         double t = System.currentTimeMillis() / 1000.0;
 
-        String aura = data.equippedAuraId;
         if (aura != null && !aura.isEmpty()) {
             switch (aura) {
                 case "aura_starlight" -> {
@@ -624,8 +650,7 @@ public final class JjnEconomyManager {
         }
 
         // Emote flair particles
-        String emote = getActiveEmoteId();
-        if (!emote.isEmpty() && tickCounter % 5 == 0) {
+        if (emote != null && !emote.isEmpty() && tickCounter % 5 == 0) {
             switch (emote) {
                 case "emote_clap" -> world.addParticle(ParticleTypes.ELECTRIC_SPARK,
                         x + (Math.random() - 0.5) * 0.5, y + 1.35, z + (Math.random() - 0.5) * 0.5,

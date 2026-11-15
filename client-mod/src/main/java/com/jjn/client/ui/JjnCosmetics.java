@@ -2,9 +2,11 @@ package com.jjn.client.ui;
 
 import com.jjn.client.JjnClientMod;
 import com.jjn.client.JjnConfig;
+import com.jjn.client.friends.JjnFriendsManager;
 import com.jjn.client.shop.JjnCosmeticAssets;
 import com.jjn.client.shop.JjnEconomyManager;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.text.Text;
@@ -80,6 +82,21 @@ public final class JjnCosmetics {
             JjnClientMod.LOGGER.warn("Could not load local custom skin", ex);
             return null;
         }
+    }
+
+    public static Identifier getCustomCapeIdForPlayer(MinecraftClient client, AbstractClientPlayerEntity player) {
+        if (client == null || player == null) {
+            return null;
+        }
+        if (client.player == player) {
+            return getCustomCapeId(client);
+        }
+        String name = player.getGameProfile() != null ? player.getGameProfile().getName() : "";
+        JjnFriendsManager.SyncedCosmetics sc = JjnFriendsManager.get().getCosmeticsForPlayer(player.getUuid(), name);
+        if (sc.capeId() != null && !sc.capeId().isBlank()) {
+            return JjnCosmeticAssets.getShopCapeId(client, sc.capeId());
+        }
+        return null;
     }
 
     public static Identifier getCustomCapeId(MinecraftClient client) {

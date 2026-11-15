@@ -1,5 +1,6 @@
 package com.jjn.client.shop;
 
+import com.jjn.client.friends.JjnFriendsManager;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
@@ -15,55 +16,55 @@ import net.minecraft.resources.Identifier;
 
 /**
  * Custom 3D RenderLayer for MC 26.2 attaching Shop Hats/Headgear to the player's head
- * and 3D Wings / Aero-Packs to the player's torso.
+ * and 3D Wings / Aero-Packs to the player's torso (supports self + synced friends + Title Screen preview).
  */
 public class JjnCosmeticsRenderLayer extends RenderLayer<AvatarRenderState, PlayerModel> {
 
     // Headgear parts
-    private final ModelPart haloFront = JjnCosmeticAssets.singleBoxPart(-4.5F, -11.5F, -4.5F, 9F, 1F, 1.2F);
-    private final ModelPart haloBack = JjnCosmeticAssets.singleBoxPart(-4.5F, -11.5F, 3.3F, 9F, 1F, 1.2F);
-    private final ModelPart haloLeft = JjnCosmeticAssets.singleBoxPart(-4.5F, -11.5F, -3.3F, 1.2F, 1F, 6.6F);
-    private final ModelPart haloRight = JjnCosmeticAssets.singleBoxPart(3.3F, -11.5F, -3.3F, 1.2F, 1F, 6.6F);
+    private static final ModelPart haloFront = JjnCosmeticAssets.singleBoxPart(-4.5F, -11.5F, -4.5F, 9F, 1F, 1.2F);
+    private static final ModelPart haloBack = JjnCosmeticAssets.singleBoxPart(-4.5F, -11.5F, 3.3F, 9F, 1F, 1.2F);
+    private static final ModelPart haloLeft = JjnCosmeticAssets.singleBoxPart(-4.5F, -11.5F, -3.3F, 1.2F, 1F, 6.6F);
+    private static final ModelPart haloRight = JjnCosmeticAssets.singleBoxPart(3.3F, -11.5F, -3.3F, 1.2F, 1F, 6.6F);
 
-    private final ModelPart crownBase = JjnCosmeticAssets.singleBoxPart(-4.3F, -9.8F, -4.3F, 8.6F, 2.0F, 8.6F);
-    private final ModelPart crownSpikeFL = JjnCosmeticAssets.singleBoxPart(-4.3F, -11.6F, -4.3F, 1.6F, 1.8F, 1.6F);
-    private final ModelPart crownSpikeFR = JjnCosmeticAssets.singleBoxPart(2.7F, -11.6F, -4.3F, 1.6F, 1.8F, 1.6F);
-    private final ModelPart crownSpikeCenter = JjnCosmeticAssets.singleBoxPart(-0.8F, -12.0F, -4.3F, 1.6F, 2.2F, 1.4F);
-    private final ModelPart crownSpikeBL = JjnCosmeticAssets.singleBoxPart(-4.3F, -11.6F, 2.7F, 1.6F, 1.8F, 1.6F);
-    private final ModelPart crownSpikeBR = JjnCosmeticAssets.singleBoxPart(2.7F, -11.6F, 2.7F, 1.6F, 1.8F, 1.6F);
-    private final ModelPart crownGem = JjnCosmeticAssets.singleBoxPart(-0.9F, -9.5F, -4.7F, 1.8F, 1.4F, 0.5F);
+    private static final ModelPart crownBase = JjnCosmeticAssets.singleBoxPart(-4.3F, -9.8F, -4.3F, 8.6F, 2.0F, 8.6F);
+    private static final ModelPart crownSpikeFL = JjnCosmeticAssets.singleBoxPart(-4.3F, -11.6F, -4.3F, 1.6F, 1.8F, 1.6F);
+    private static final ModelPart crownSpikeFR = JjnCosmeticAssets.singleBoxPart(2.7F, -11.6F, -4.3F, 1.6F, 1.8F, 1.6F);
+    private static final ModelPart crownSpikeCenter = JjnCosmeticAssets.singleBoxPart(-0.8F, -12.0F, -4.3F, 1.6F, 2.2F, 1.4F);
+    private static final ModelPart crownSpikeBL = JjnCosmeticAssets.singleBoxPart(-4.3F, -11.6F, 2.7F, 1.6F, 1.8F, 1.6F);
+    private static final ModelPart crownSpikeBR = JjnCosmeticAssets.singleBoxPart(2.7F, -11.6F, 2.7F, 1.6F, 1.8F, 1.6F);
+    private static final ModelPart crownGem = JjnCosmeticAssets.singleBoxPart(-0.9F, -9.5F, -4.7F, 1.8F, 1.4F, 0.5F);
 
-    private final ModelPart hornLBase = JjnCosmeticAssets.singleBoxPart(-5.2F, -10.5F, -1.2F, 1.5F, 3.0F, 1.8F);
-    private final ModelPart hornLTip = JjnCosmeticAssets.singleBoxPart(-6.0F, -12.8F, -1.5F, 1.2F, 2.6F, 1.4F);
-    private final ModelPart hornRBase = JjnCosmeticAssets.singleBoxPart(3.7F, -10.5F, -1.2F, 1.5F, 3.0F, 1.8F);
-    private final ModelPart hornRTip = JjnCosmeticAssets.singleBoxPart(4.8F, -12.8F, -1.5F, 1.2F, 2.6F, 1.4F);
+    private static final ModelPart hornLBase = JjnCosmeticAssets.singleBoxPart(-5.2F, -10.5F, -1.2F, 1.5F, 3.0F, 1.8F);
+    private static final ModelPart hornLTip = JjnCosmeticAssets.singleBoxPart(-6.0F, -12.8F, -1.5F, 1.2F, 2.6F, 1.4F);
+    private static final ModelPart hornRBase = JjnCosmeticAssets.singleBoxPart(3.7F, -10.5F, -1.2F, 1.5F, 3.0F, 1.8F);
+    private static final ModelPart hornRTip = JjnCosmeticAssets.singleBoxPart(4.8F, -12.8F, -1.5F, 1.2F, 2.6F, 1.4F);
 
-    private final ModelPart earLOuter = JjnCosmeticAssets.singleBoxPart(-4.2F, -11.2F, -1.0F, 2.6F, 3.2F, 1.8F);
-    private final ModelPart earLInner = JjnCosmeticAssets.singleBoxPart(-3.7F, -10.6F, -1.2F, 1.5F, 2.2F, 0.8F);
-    private final ModelPart earROuter = JjnCosmeticAssets.singleBoxPart(1.6F, -11.2F, -1.0F, 2.6F, 3.2F, 1.8F);
-    private final ModelPart earRInner = JjnCosmeticAssets.singleBoxPart(2.2F, -10.6F, -1.2F, 1.5F, 2.2F, 0.8F);
+    private static final ModelPart earLOuter = JjnCosmeticAssets.singleBoxPart(-4.2F, -11.2F, -1.0F, 2.6F, 3.2F, 1.8F);
+    private static final ModelPart earLInner = JjnCosmeticAssets.singleBoxPart(-3.7F, -10.6F, -1.2F, 1.5F, 2.2F, 0.8F);
+    private static final ModelPart earROuter = JjnCosmeticAssets.singleBoxPart(1.6F, -11.2F, -1.0F, 2.6F, 3.2F, 1.8F);
+    private static final ModelPart earRInner = JjnCosmeticAssets.singleBoxPart(2.2F, -10.6F, -1.2F, 1.5F, 2.2F, 0.8F);
 
     // Angel Wings (origin at wing root so rotation opens outward neatly)
-    private final ModelPart angelTopR = JjnCosmeticAssets.singleBoxPart(0.5F, -2.5F, -0.5F, 11.0F, 5.0F, 1.0F);
-    private final ModelPart angelMidR = JjnCosmeticAssets.singleBoxPart(1.5F, 2.5F, -0.4F, 12.0F, 4.0F, 0.9F);
-    private final ModelPart angelLowR = JjnCosmeticAssets.singleBoxPart(1.0F, 6.5F, -0.4F, 8.0F, 4.0F, 0.8F);
+    private static final ModelPart angelTopR = JjnCosmeticAssets.singleBoxPart(0.5F, -2.5F, -0.5F, 11.0F, 5.0F, 1.0F);
+    private static final ModelPart angelMidR = JjnCosmeticAssets.singleBoxPart(1.5F, 2.5F, -0.4F, 12.0F, 4.0F, 0.9F);
+    private static final ModelPart angelLowR = JjnCosmeticAssets.singleBoxPart(1.0F, 6.5F, -0.4F, 8.0F, 4.0F, 0.8F);
 
-    private final ModelPart angelTopL = JjnCosmeticAssets.singleBoxPart(-11.5F, -2.5F, -0.5F, 11.0F, 5.0F, 1.0F);
-    private final ModelPart angelMidL = JjnCosmeticAssets.singleBoxPart(-13.5F, 2.5F, -0.4F, 12.0F, 4.0F, 0.9F);
-    private final ModelPart angelLowL = JjnCosmeticAssets.singleBoxPart(-9.0F, 6.5F, -0.4F, 8.0F, 4.0F, 0.8F);
+    private static final ModelPart angelTopL = JjnCosmeticAssets.singleBoxPart(-11.5F, -2.5F, -0.5F, 11.0F, 5.0F, 1.0F);
+    private static final ModelPart angelMidL = JjnCosmeticAssets.singleBoxPart(-13.5F, 2.5F, -0.4F, 12.0F, 4.0F, 0.9F);
+    private static final ModelPart angelLowL = JjnCosmeticAssets.singleBoxPart(-9.0F, 6.5F, -0.4F, 8.0F, 4.0F, 0.8F);
 
     // Dragon Wings
-    private final ModelPart dragonBoneR = JjnCosmeticAssets.singleBoxPart(0.0F, -3.5F, -0.6F, 13.0F, 2.0F, 1.2F);
-    private final ModelPart dragonMemR = JjnCosmeticAssets.singleBoxPart(0.5F, -1.5F, -0.4F, 11.5F, 8.0F, 0.8F);
-    private final ModelPart dragonBoneL = JjnCosmeticAssets.singleBoxPart(-13.0F, -3.5F, -0.6F, 13.0F, 2.0F, 1.2F);
-    private final ModelPart dragonMemL = JjnCosmeticAssets.singleBoxPart(-12.0F, -1.5F, -0.4F, 11.5F, 8.0F, 0.8F);
+    private static final ModelPart dragonBoneR = JjnCosmeticAssets.singleBoxPart(0.0F, -3.5F, -0.6F, 13.0F, 2.0F, 1.2F);
+    private static final ModelPart dragonMemR = JjnCosmeticAssets.singleBoxPart(0.5F, -1.5F, -0.4F, 11.5F, 8.0F, 0.8F);
+    private static final ModelPart dragonBoneL = JjnCosmeticAssets.singleBoxPart(-13.0F, -3.5F, -0.6F, 13.0F, 2.0F, 1.2F);
+    private static final ModelPart dragonMemL = JjnCosmeticAssets.singleBoxPart(-12.0F, -1.5F, -0.4F, 11.5F, 8.0F, 0.8F);
 
     // Aero-Pack
-    private final ModelPart jetPodL = JjnCosmeticAssets.singleBoxPart(-4.5F, 1.5F, 2.2F, 3.2F, 8.5F, 3.0F);
-    private final ModelPart jetPodR = JjnCosmeticAssets.singleBoxPart(1.3F, 1.5F, 2.2F, 3.2F, 8.5F, 3.0F);
-    private final ModelPart jetCore = JjnCosmeticAssets.singleBoxPart(-1.3F, 3.0F, 2.2F, 2.6F, 5.0F, 2.2F);
-    private final ModelPart jetFlameL = JjnCosmeticAssets.singleBoxPart(-4.0F, 10.0F, 2.6F, 2.2F, 2.4F, 2.2F);
-    private final ModelPart jetFlameR = JjnCosmeticAssets.singleBoxPart(1.8F, 10.0F, 2.6F, 2.2F, 2.4F, 2.2F);
+    private static final ModelPart jetPodL = JjnCosmeticAssets.singleBoxPart(-4.5F, 1.5F, 2.2F, 3.2F, 8.5F, 3.0F);
+    private static final ModelPart jetPodR = JjnCosmeticAssets.singleBoxPart(1.3F, 1.5F, 2.2F, 3.2F, 8.5F, 3.0F);
+    private static final ModelPart jetCore = JjnCosmeticAssets.singleBoxPart(-1.3F, 3.0F, 2.2F, 2.6F, 5.0F, 2.2F);
+    private static final ModelPart jetFlameL = JjnCosmeticAssets.singleBoxPart(-4.0F, 10.0F, 2.6F, 2.2F, 2.4F, 2.2F);
+    private static final ModelPart jetFlameR = JjnCosmeticAssets.singleBoxPart(1.8F, 10.0F, 2.6F, 2.2F, 2.4F, 2.2F);
 
     public JjnCosmeticsRenderLayer(RenderLayerParent<AvatarRenderState, PlayerModel> parent) {
         super(parent);
@@ -79,13 +80,21 @@ public class JjnCosmeticsRenderLayer extends RenderLayer<AvatarRenderState, Play
             float xRot
     ) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.player == null || state.id != mc.player.getId() || state.isSpectator) {
+        if (mc == null || state.isSpectator) {
             return;
         }
 
-        JjnEconomyManager.EconomyData data = JjnEconomyManager.get().snapshot();
-        String hatId = data.equippedHatId == null ? "" : data.equippedHatId;
-        String backId = data.equippedBackId == null ? "" : data.equippedBackId;
+        String hatId;
+        String backId;
+        if (mc.player != null && state.id == mc.player.getId()) {
+            JjnEconomyManager.EconomyData data = JjnEconomyManager.get().snapshot();
+            hatId = data.equippedHatId == null ? "" : data.equippedHatId;
+            backId = data.equippedBackId == null ? "" : data.equippedBackId;
+        } else {
+            JjnFriendsManager.SyncedCosmetics sc = JjnFriendsManager.get().getCosmeticsForEntityId(state.id);
+            hatId = sc.hatId() == null ? "" : sc.hatId();
+            backId = sc.backId() == null ? "" : sc.backId();
+        }
         if (hatId.isEmpty() && backId.isEmpty()) {
             return;
         }
@@ -107,7 +116,8 @@ public class JjnCosmeticsRenderLayer extends RenderLayer<AvatarRenderState, Play
         }
     }
 
-    private void renderHat(Minecraft mc, String hatId, double t, PoseStack ps, SubmitNodeCollector col, int light) {
+    public static void renderHat(Minecraft mc, String hatId, double t, PoseStack ps, SubmitNodeCollector col, int light) {
+        if (mc == null || hatId == null || hatId.isEmpty()) return;
         switch (hatId) {
             case "hat_halo" -> {
                 Identifier goldTex = JjnCosmeticAssets.materialTexture(mc, "halo_gold", 0xFFFCD34D);
@@ -150,7 +160,8 @@ public class JjnCosmeticsRenderLayer extends RenderLayer<AvatarRenderState, Play
         }
     }
 
-    private void renderBack(Minecraft mc, String backId, double t, PoseStack ps, SubmitNodeCollector col, int light) {
+    public static void renderBack(Minecraft mc, String backId, double t, PoseStack ps, SubmitNodeCollector col, int light) {
+        if (mc == null || backId == null || backId.isEmpty()) return;
         float flap = (float) Math.sin(t * 3.8) * 0.24F;
         switch (backId) {
             case "back_angel_wings" -> {
