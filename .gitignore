@@ -42,3 +42,8 @@ bin/
 ### Mac OS ###
 .DS_Store
 .idea/
+client-mod/.gradle/
+client-mod/run/
+client-mod-26/.gradle/
+client-mod-26/run/
+friends-relay/.gradle/

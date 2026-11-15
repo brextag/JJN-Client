@@ -1,0 +1,26 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.jjn.client.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "PlayerListMixin"
+  ],
+  "client": [
+    "TitleScreenRedirectMixin",
+    "InGameHudMixin",
+    "KeyboardMixin",
+    "MinecraftTickMixin",
+    "PauseScreenMixin",
+    "GuiSkinRendererMixin",
+    "AbstractClientPlayerMixin",
+    "PlayerMixin",
+    "PlayerTabOverlayMixin",
+    "MultiPackResourceManagerMixin",
+    "PlayerModelEmoteMixin",
+    "AvatarRendererCosmeticsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
