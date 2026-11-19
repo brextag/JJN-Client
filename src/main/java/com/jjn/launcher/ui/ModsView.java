@@ -58,15 +58,19 @@ public class ModsView {
 
         // Top target instance & mode bar
         ComboBox<Instance> instancePicker = UiUtils.instanceComboBox(allInstances, current);
-        instancePicker.setPrefWidth(290);
+        instancePicker.setPrefWidth(220);
+        instancePicker.setMinWidth(160);
+        instancePicker.setMaxWidth(Double.MAX_VALUE);
 
         ToggleGroup modeGroup = new ToggleGroup();
         ToggleButton browseModeBtn = new ToggleButton("Browse Online");
         browseModeBtn.getStyleClass().add("pill-toggle");
+        browseModeBtn.setMinWidth(Region.USE_PREF_SIZE);
         browseModeBtn.setToggleGroup(modeGroup);
 
         ToggleButton installedModeBtn = new ToggleButton("Installed Mods");
         installedModeBtn.getStyleClass().add("pill-toggle");
+        installedModeBtn.setMinWidth(Region.USE_PREF_SIZE);
         installedModeBtn.setToggleGroup(modeGroup);
 
         if (showInstalledOnly) {
@@ -78,8 +82,10 @@ public class ModsView {
         HBox modeSwitcher = new HBox(4, browseModeBtn, installedModeBtn);
         modeSwitcher.getStyleClass().add("segmented-group");
         modeSwitcher.setAlignment(Pos.CENTER_LEFT);
+        modeSwitcher.setMinWidth(Region.USE_PREF_SIZE);
 
         Button openFolderBtn = UiUtils.secondaryButton("Open mods folder");
+        openFolderBtn.setMinWidth(Region.USE_PREF_SIZE);
         openFolderBtn.setOnAction(e -> {
             if (targetRef[0] != null) {
                 UiUtils.openInExplorer(targetRef[0].modsFolder());
@@ -91,11 +97,9 @@ public class ModsView {
 
         VBox targetCol = new VBox(4, targetLabel, instancePicker);
         targetCol.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(targetCol, Priority.ALWAYS);
 
-        Region barGap = new Region();
-        HBox.setHgrow(barGap, Priority.ALWAYS);
-
-        HBox targetBar = new HBox(14, targetCol, barGap, modeSwitcher, openFolderBtn);
+        HBox targetBar = new HBox(12, targetCol, modeSwitcher, openFolderBtn);
         targetBar.setAlignment(Pos.CENTER_LEFT);
         targetBar.getStyleClass().add("selection-bar");
 
@@ -106,11 +110,7 @@ public class ModsView {
         HBox.setHgrow(bannerGap, Priority.ALWAYS);
         HBox loaderBanner = new HBox(12, loaderBannerText, bannerGap, switchLoaderBtn);
         loaderBanner.setAlignment(Pos.CENTER_LEFT);
-        loaderBanner.setPadding(new Insets(10, 14, 10, 14));
-        loaderBanner.setStyle(
-                "-fx-background-color: #202432; -fx-background-radius: 12;"
-                        + "-fx-border-color: #353949; -fx-border-radius: 12;"
-        );
+        loaderBanner.getStyleClass().add("loader-banner");
 
         switchLoaderBtn.setOnAction(e -> {
             if (targetRef[0] != null) {
@@ -151,11 +151,7 @@ public class ModsView {
         matchInstanceCheck.setSelected(true);
 
         Label filterPill = new Label("");
-        filterPill.setStyle(
-                "-fx-background-color: #202432; -fx-text-fill: #c7d2fe;"
-                        + "-fx-font-size: 11px; -fx-font-weight: bold;"
-                        + "-fx-padding: 4 10 4 10; -fx-background-radius: 999;"
-        );
+        filterPill.getStyleClass().add("badge-accent");
 
         HBox searchTopRow = new HBox(10, searchField, searchBtn, sourceSwitcher);
         searchTopRow.setAlignment(Pos.CENTER_LEFT);
@@ -171,19 +167,11 @@ public class ModsView {
 
         // Lists for Browse vs Installed
         ListView<ModCatalogService.ModSearchResult> resultsList = new ListView<>();
-        resultsList.setStyle(
-                "-fx-background-color: transparent;"
-                        + "-fx-control-inner-background: transparent;"
-                        + "-fx-background-insets: 0;"
-        );
+        resultsList.getStyleClass().add("transparent-list");
         VBox.setVgrow(resultsList, Priority.ALWAYS);
 
         ListView<Path> localModsList = new ListView<>();
-        localModsList.setStyle(
-                "-fx-background-color: transparent;"
-                        + "-fx-control-inner-background: transparent;"
-                        + "-fx-background-insets: 0;"
-        );
+        localModsList.getStyleClass().add("transparent-list");
         VBox.setVgrow(localModsList, Priority.ALWAYS);
 
         Button addLocalBtn = UiUtils.secondaryButton("+ Add local .jar mod...");
@@ -282,7 +270,6 @@ public class ModsView {
                 if (empty || mod == null) {
                     setGraphic(null);
                     setText(null);
-                    setStyle("-fx-background-color: transparent;");
                     return;
                 }
 
@@ -291,26 +278,22 @@ public class ModsView {
                 iconView.setFitHeight(44);
                 iconView.setPreserveRatio(true);
                 Rectangle clip = new Rectangle(44, 44);
-                clip.setArcWidth(12);
-                clip.setArcHeight(12);
+                clip.setArcWidth(10);
+                clip.setArcHeight(10);
                 iconView.setClip(clip);
                 loadIconAsync(mod.iconUrl(), iconView);
 
                 StackPane iconWrap = new StackPane(iconView);
                 iconWrap.setPrefSize(44, 44);
                 iconWrap.setMinSize(44, 44);
-                iconWrap.setStyle("-fx-background-color: #202432; -fx-background-radius: 10;");
+                iconWrap.getStyleClass().add("preview-frame");
 
                 Label titleLbl = new Label(mod.name());
-                titleLbl.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 15px; -fx-font-weight: bold;");
+                titleLbl.getStyleClass().add("card-title");
 
                 boolean isMr = ModCatalogService.SOURCE_MODRINTH.equalsIgnoreCase(mod.source());
                 Label sourceBadge = new Label(isMr ? "MODRINTH" : "CURSEFORGE");
-                sourceBadge.setStyle(
-                        isMr
-                                ? "-fx-background-color: #1c3329; -fx-text-fill: #86efac; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8 2 8; -fx-background-radius: 999;"
-                                : "-fx-background-color: #36241b; -fx-text-fill: #fdba74; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8 2 8; -fx-background-radius: 999;"
-                );
+                sourceBadge.getStyleClass().add(isMr ? "badge-success" : "badge-warning");
 
                 Label authorLbl = UiUtils.mutedLabel(
                         "by " + (mod.author() == null ? "Unknown" : mod.author())
@@ -320,10 +303,8 @@ public class ModsView {
                 HBox headRow = new HBox(8, titleLbl, sourceBadge);
                 headRow.setAlignment(Pos.CENTER_LEFT);
 
-                Label descLbl = new Label(mod.description() == null ? "" : mod.description());
-                descLbl.setWrapText(true);
+                Label descLbl = UiUtils.mutedLabel(mod.description() == null ? "" : mod.description());
                 descLbl.setMaxHeight(36);
-                descLbl.setStyle("-fx-text-fill: #9ca3af; -fx-font-size: 12px;");
 
                 VBox textCol = new VBox(4, headRow, authorLbl, descLbl);
                 HBox.setHgrow(textCol, Priority.ALWAYS);
@@ -400,7 +381,6 @@ public class ModsView {
                 setGraphic(card);
                 setText(null);
                 setPadding(new Insets(4, 0, 4, 0));
-                setStyle("-fx-background-color: transparent;");
             }
         });
 
@@ -411,7 +391,6 @@ public class ModsView {
                 if (empty || modPath == null) {
                     setGraphic(null);
                     setText(null);
-                    setStyle("-fx-background-color: transparent;");
                     return;
                 }
                 String fileName = modPath.getFileName().toString();
@@ -421,14 +400,10 @@ public class ModsView {
                         : fileName;
 
                 Label nameLbl = new Label(displayName);
-                nameLbl.setStyle("-fx-text-fill: " + (disabled ? "#64748b" : "#f8fafc") + "; -fx-font-weight: bold;");
+                nameLbl.getStyleClass().add(disabled ? "card-title-muted" : "card-title");
 
                 Label stateBadge = new Label(disabled ? "DISABLED" : "ENABLED");
-                stateBadge.setStyle(
-                        disabled
-                                ? "-fx-background-color: #332717; -fx-text-fill: #fbbf24; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8 2 8; -fx-background-radius: 999;"
-                                : "-fx-background-color: #1c3329; -fx-text-fill: #86efac; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8 2 8; -fx-background-radius: 999;"
-                );
+                stateBadge.getStyleClass().add(disabled ? "badge-warning" : "badge-success");
 
                 Button toggleBtn = UiUtils.secondaryButton(disabled ? "Enable" : "Disable");
                 toggleBtn.setOnAction(e -> {
@@ -461,7 +436,6 @@ public class ModsView {
                 setGraphic(card);
                 setText(null);
                 setPadding(new Insets(4, 0, 4, 0));
-                setStyle("-fx-background-color: transparent;");
             }
         });
 

@@ -97,7 +97,6 @@ public final class UiUtils {
 
     public static VBox card(Node... children) {
         VBox box = new VBox(10, children);
-        box.setPadding(new Insets(20));
         box.getStyleClass().add("panel-card");
         return box;
     }
@@ -118,12 +117,8 @@ public final class UiUtils {
         if (dialog == null) {
             return;
         }
+        ThemeManager.applyToDialog(dialog);
         DialogPane pane = dialog.getDialogPane();
-        pane.setStyle("-fx-background-color: #191b23;");
-        var cssUrl = UiUtils.class.getResource("/com/jjn/launcher/styles.css");
-        if (cssUrl != null && !pane.getStylesheets().contains(cssUrl.toExternalForm())) {
-            pane.getStylesheets().add(cssUrl.toExternalForm());
-        }
         dialog.setOnShown(e -> {
             if (pane.getScene() != null && pane.getScene().getWindow() instanceof Stage s) {
                 applyAppIcon(s);
@@ -153,17 +148,13 @@ public final class UiUtils {
                     return;
                 }
                 Label nameLbl = new Label(inst.name);
-                nameLbl.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 13px; -fx-font-weight: bold;");
+                nameLbl.getStyleClass().add("card-title");
 
                 String meta = inst.isInstalled()
                         ? (inst.mcVersion != null ? inst.mcVersion : inst.version) + " • " + inst.loaderDisplayName()
                         : "Not installed";
                 Label metaLbl = new Label(meta);
-                metaLbl.setStyle(
-                        showBadge
-                                ? "-fx-background-color: #202432; -fx-text-fill: #c7d2fe; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8 2 8; -fx-background-radius: 999;"
-                                : "-fx-text-fill: #9ca3af; -fx-font-size: 11px;"
-                );
+                metaLbl.getStyleClass().add(showBadge ? "badge-accent" : "muted-text");
 
                 Region gap = new Region();
                 HBox.setHgrow(gap, Priority.ALWAYS);

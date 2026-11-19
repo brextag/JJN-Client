@@ -2,6 +2,7 @@
 package com.jjn.launcher;
 
 import com.google.gson.*;
+import com.jjn.launcher.ui.ThemeManager;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -49,39 +50,33 @@ public class MinecraftInstaller extends Application {
     @Override
     public void start(Stage stage) {
 
+        ThemeManager.ensureFontsLoaded();
+        LauncherSettings settings = LauncherSettings.load();
+
         Label logo = new Label("JJN");
-        logo.setFont(Font.font("Arial", 30));
-        logo.setTextFill(Color.WHITE);
+        logo.getStyleClass().add("brand-title");
 
         Label heading = new Label("Minecraft Installer");
-        heading.setFont(Font.font("Arial", 25));
-        heading.setTextFill(Color.WHITE);
+        heading.getStyleClass().add("page-title");
 
         Label subtitle = new Label(
                 "Install official Minecraft into your JJN instance."
         );
-        subtitle.setTextFill(Color.web("#999999"));
+        subtitle.getStyleClass().add("muted-text");
 
-        instanceLabel.setTextFill(Color.web("#c7d2fe"));
+        instanceLabel.getStyleClass().add("accent-value");
 
         Label versionLabel = new Label("Minecraft Version");
-        versionLabel.setTextFill(Color.WHITE);
+        versionLabel.getStyleClass().add("field-label");
 
         versionBox.setPromptText("Select a version");
         versionBox.setMaxWidth(Double.MAX_VALUE);
 
         installButton.setMaxWidth(Double.MAX_VALUE);
         installButton.setPrefHeight(45);
-        installButton.setStyle(
-                "-fx-background-color: #c7d2fe;" +
-                        "-fx-text-fill: #171923;" +
-                        "-fx-font-size: 14px;" +
-                        "-fx-font-weight: bold;" +
-                        "-fx-background-radius: 10;" +
-                        "-fx-cursor: hand;"
-        );
+        installButton.getStyleClass().add("primary-button");
 
-        status.setTextFill(Color.web("#aaaaaa"));
+        status.getStyleClass().add("muted-text");
         status.setWrapText(true);
 
         progress.setMaxWidth(Double.MAX_VALUE);
@@ -89,13 +84,16 @@ public class MinecraftInstaller extends Application {
 
         installButton.setOnAction(e -> installMinecraft());
 
+        Label selectedInstLbl = new Label("Selected JJN instance");
+        selectedInstLbl.getStyleClass().add("field-label");
+
         VBox content = new VBox(
                 17,
                 logo,
                 heading,
                 subtitle,
                 new Separator(),
-                new Label("Selected JJN instance"),
+                selectedInstLbl,
                 instanceLabel,
                 versionLabel,
                 versionBox,
@@ -106,16 +104,9 @@ public class MinecraftInstaller extends Application {
 
         content.setPadding(new Insets(35));
         content.setAlignment(Pos.CENTER_LEFT);
-        content.setStyle("-fx-background-color: #151515;");
-
-        for (var node : content.getChildren()) {
-            if (node instanceof Label label &&
-                    label.getText().equals("Selected JJN instance")) {
-                label.setTextFill(Color.WHITE);
-            }
-        }
 
         Scene scene = new Scene(content, 540, 510);
+        ThemeManager.apply(scene, settings);
 
         stage.setTitle("JJN Client - Minecraft Installer");
         stage.setScene(scene);

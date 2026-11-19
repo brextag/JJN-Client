@@ -5,6 +5,7 @@ import com.jjn.launcher.model.ClientProfile;
 import com.jjn.launcher.service.ProfileService;
 import com.jjn.launcher.shop.EconomyService;
 import com.jjn.launcher.shop.EconomyStore;
+import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -13,6 +14,7 @@ import javafx.scene.layout.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -34,6 +36,8 @@ public class ShopView {
     private Actions actions;
     private SubTab currentTab = SubTab.SHOP;
     private EconomyStore.Category filterCategory = null; // null = All
+    private boolean filterDealsOnly = false;
+    private boolean adminUnlocked = false;
 
     private SkinPreviewCanvas previewCanvas;
     private Label coinsLabel;
@@ -76,11 +80,7 @@ public class ShopView {
         tabSegment.getStyleClass().add("segmented-group");
 
         coinsLabel = new Label();
-        coinsLabel.setStyle(
-                "-fx-background-color: #202432; -fx-border-color: #c7d2fe; -fx-border-radius: 10;"
-                        + "-fx-background-radius: 10; -fx-padding: 7 14 7 14;"
-                        + "-fx-text-fill: #c7d2fe; -fx-font-size: 13px; -fx-font-weight: bold;"
-        );
+        coinsLabel.getStyleClass().add("coins-pill");
 
         earnedLabel = UiUtils.mutedLabel("");
         Button refreshBtn = UiUtils.secondaryButton("Sync");
@@ -95,7 +95,7 @@ public class ShopView {
 
         feedbackLabel = new Label();
         feedbackLabel.setWrapText(true);
-        feedbackLabel.setStyle("-fx-text-fill: #86efac; -fx-font-size: 12px; -fx-font-weight: bold;");
+        feedbackLabel.getStyleClass().add("status-success");
         feedbackLabel.setVisible(false);
         feedbackLabel.setManaged(false);
 
@@ -103,31 +103,26 @@ public class ShopView {
         previewCanvas = new SkinPreviewCanvas(220, 270);
         StackPane previewFrame = new StackPane(previewCanvas);
         previewFrame.setPadding(new Insets(8));
-        previewFrame.setStyle(
-                "-fx-background-color: #101116; -fx-background-radius: 14;"
-                        + "-fx-border-color: #2b3040; -fx-border-radius: 14;"
-        );
+        previewFrame.getStyleClass().add("preview-frame");
 
         previewInfoLabel = new Label("Showing Equipped Loadout");
         previewInfoLabel.setWrapText(true);
-        previewInfoLabel.setStyle("-fx-text-fill: #e5e7eb; -fx-font-size: 12px; -fx-font-weight: bold;");
+        previewInfoLabel.getStyleClass().add("card-title");
 
         auraBadgeLabel = new Label("Aura: None");
         auraBadgeLabel.setWrapText(true);
-        auraBadgeLabel.setStyle(
-                "-fx-background-color: #15171e; -fx-border-color: #2b3040; -fx-border-radius: 8;"
-                        + "-fx-background-radius: 8; -fx-padding: 6 10 6 10;"
-                        + "-fx-text-fill: #9ca3af; -fx-font-size: 11px;"
-        );
+        auraBadgeLabel.getStyleClass().add("aura-badge");
         auraBadgeLabel.setMaxWidth(Double.MAX_VALUE);
 
-        Button flipBtn = UiUtils.secondaryButton("Flip Front / Back");
+        Button flipBtn = UiUtils.secondaryButton("Flip View");
+        flipBtn.setMinWidth(Region.USE_PREF_SIZE);
         flipBtn.setOnAction(e -> previewCanvas.flipView());
 
         Button resetBtn = UiUtils.secondaryButton("Reset Preview");
+        resetBtn.setMinWidth(Region.USE_PREF_SIZE);
         resetBtn.setOnAction(e -> clearPreviews());
 
-        HBox previewBtns = new HBox(8, flipBtn, resetBtn);
+        FlowPane previewBtns = new FlowPane(8, 8, flipBtn, resetBtn);
         previewBtns.setAlignment(Pos.CENTER);
 
         VBox leftCard = UiUtils.card(
@@ -138,8 +133,8 @@ public class ShopView {
                 previewBtns,
                 UiUtils.mutedLabel("Drag to rotate • Click Preview on any item")
         );
-        leftCard.setPrefWidth(295);
-        leftCard.setMinWidth(285);
+        leftCard.setPrefWidth(305);
+        leftCard.setMinWidth(295);
 
         rightContentBox = new VBox(14);
         rightContentBox.setPadding(new Insets(2, 4, 8, 2));
@@ -190,6 +185,11 @@ public class ShopView {
         String msg = economy.getLastMessage();
         if (msg != null && !msg.isBlank()) {
             feedbackLabel.setText(msg);
+            feedbackLabel.getStyleClass().setAll(
+                    msg.startsWith("Need ") || msg.startsWith("Unknown ") || msg.startsWith("Enter ")
+                            ? "status-warning"
+                            : "status-success"
+            );
             feedbackLabel.setVisible(true);
             feedbackLabel.setManaged(true);
         }
@@ -205,30 +205,144 @@ public class ShopView {
     }
 
     private void buildShopSection(EconomyService economy, EconomyStore.EconomyData data) {
+        EconomyStore.CreatorCodeDef activeCode = economy.getActiveCreatorCode();
+
+        // Creator Code & Special Deals bar
+        Label creatorTitle = new Label("CREATOR CODE");
+        creatorTitle.getStyleClass().add("accent-text");
+
+        Label creatorBadge = new Label(activeCode != null
+                ? activeCode.code() + "  •  " + activeCode.creatorName().toUpperCase()
+                : "NO CODE ACTIVE");
+        creatorBadge.getStyleClass().add(activeCode != null ? "badge-success" : "badge-muted");
+
+        Region creatorGap = new Region();
+        HBox.setHgrow(creatorGap, Priority.ALWAYS);
+
+        Label creatorHint = UiUtils.mutedLabel(activeCode != null
+                ? activeCode.tagline()
+                : "Enter a Creator Code (e.g. JJN, BLUE, VIP, WELCOME) to unlock shop discounts & featured deals!");
+
+        TextField codeField = new TextField(activeCode != null ? activeCode.code() : "");
+        codeField.getStyleClass().add("input-field");
+        codeField.setPromptText("Enter Creator Code...");
+        codeField.setPrefWidth(210);
+        HBox.setHgrow(codeField, Priority.SOMETIMES);
+
+        Button applyCodeBtn = new Button("Apply Code");
+        applyCodeBtn.getStyleClass().add("primary-button");
+        applyCodeBtn.setPadding(new Insets(8, 14, 8, 14));
+        applyCodeBtn.setMinWidth(Region.USE_PREF_SIZE);
+        applyCodeBtn.setOnAction(e -> {
+            String entered = codeField.getText();
+            if (EconomyStore.isAdminCode(entered)) {
+                adminUnlocked = true;
+                codeField.clear();
+                refreshDynamicContent();
+                feedbackLabel.setText("Admin Panel unlocked.");
+                feedbackLabel.getStyleClass().setAll("status-success");
+                feedbackLabel.setVisible(true);
+                feedbackLabel.setManaged(true);
+                openAdminPanelDialog(economy);
+                return;
+            }
+            if (economy.applyCreatorCode(entered)) {
+                refreshDynamicContent();
+            } else {
+                String msg = economy.getLastMessage();
+                if (msg != null && !msg.isBlank()) {
+                    feedbackLabel.setText(msg);
+                    feedbackLabel.getStyleClass().setAll("status-warning");
+                    feedbackLabel.setVisible(true);
+                    feedbackLabel.setManaged(true);
+                }
+            }
+        });
+        codeField.setOnAction(e -> applyCodeBtn.fire());
+
+        Button clearCodeBtn = UiUtils.secondaryButton("Clear");
+        clearCodeBtn.setMinWidth(Region.USE_PREF_SIZE);
+        clearCodeBtn.setVisible(activeCode != null);
+        clearCodeBtn.setManaged(activeCode != null);
+        clearCodeBtn.setOnAction(e -> {
+            filterDealsOnly = false;
+            economy.clearCreatorCode();
+            refreshDynamicContent();
+        });
+
+        Button adminOpenBtn = new Button("★ Admin Panel");
+        adminOpenBtn.getStyleClass().add("primary-button");
+        adminOpenBtn.setPadding(new Insets(6, 12, 6, 12));
+        adminOpenBtn.setMinWidth(Region.USE_PREF_SIZE);
+        adminOpenBtn.setVisible(adminUnlocked);
+        adminOpenBtn.setManaged(adminUnlocked);
+        adminOpenBtn.setOnAction(e -> openAdminPanelDialog(economy));
+
+        Button adminLockBtn = UiUtils.secondaryButton("Lock");
+        adminLockBtn.setPadding(new Insets(6, 12, 6, 12));
+        adminLockBtn.setMinWidth(Region.USE_PREF_SIZE);
+        adminLockBtn.setVisible(adminUnlocked);
+        adminLockBtn.setManaged(adminUnlocked);
+        adminLockBtn.setOnAction(e -> {
+            adminUnlocked = false;
+            refreshDynamicContent();
+            feedbackLabel.setText("Admin Panel locked.");
+            feedbackLabel.getStyleClass().setAll("status-success");
+            feedbackLabel.setVisible(true);
+            feedbackLabel.setManaged(true);
+        });
+
+        HBox creatorTop = new HBox(8, creatorTitle, creatorBadge, creatorGap, adminOpenBtn, adminLockBtn);
+        creatorTop.setAlignment(Pos.CENTER_LEFT);
+
+        HBox creatorInputRow = new HBox(8, codeField, applyCodeBtn, clearCodeBtn);
+        creatorInputRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox creatorBox = new VBox(8, creatorTop, creatorHint, creatorInputRow);
+        creatorBox.getStyleClass().add(activeCode != null ? "loader-banner" : "selection-bar");
+        rightContentBox.getChildren().add(creatorBox);
+
+        if (economy.getLastMessage() != null && economy.getLastMessage().startsWith("Creator Code")) {
+            feedbackLabel.getStyleClass().setAll("status-success");
+        }
+
         // Category filter bar
         ToggleGroup catGroup = new ToggleGroup();
-        HBox filterBar = new HBox(4);
+        FlowPane filterBar = new FlowPane(6, 6);
         filterBar.getStyleClass().add("segmented-group");
 
         ToggleButton allBtn = new ToggleButton("All");
         allBtn.getStyleClass().add("pill-toggle");
+        allBtn.setMinWidth(Region.USE_PREF_SIZE);
         allBtn.setToggleGroup(catGroup);
-        allBtn.setSelected(filterCategory == null);
-        allBtn.setOnAction(e -> { filterCategory = null; refreshDynamicContent(); });
+        allBtn.setSelected(!filterDealsOnly && filterCategory == null);
+        allBtn.setOnAction(e -> { filterDealsOnly = false; filterCategory = null; refreshDynamicContent(); });
         filterBar.getChildren().add(allBtn);
+
+        if (activeCode != null) {
+            ToggleButton dealsBtn = new ToggleButton("★ Creator Deals");
+            dealsBtn.getStyleClass().add("pill-toggle");
+            dealsBtn.setMinWidth(Region.USE_PREF_SIZE);
+            dealsBtn.setToggleGroup(catGroup);
+            dealsBtn.setSelected(filterDealsOnly);
+            dealsBtn.setOnAction(e -> { filterDealsOnly = true; filterCategory = null; refreshDynamicContent(); });
+            filterBar.getChildren().add(dealsBtn);
+        }
 
         for (EconomyStore.Category cat : EconomyStore.Category.values()) {
             ToggleButton cb = new ToggleButton(cat.label);
             cb.getStyleClass().add("pill-toggle");
+            cb.setMinWidth(Region.USE_PREF_SIZE);
             cb.setToggleGroup(catGroup);
-            cb.setSelected(filterCategory == cat);
-            cb.setOnAction(e -> { filterCategory = cat; refreshDynamicContent(); });
+            cb.setSelected(!filterDealsOnly && filterCategory == cat);
+            cb.setOnAction(e -> { filterDealsOnly = false; filterCategory = cat; refreshDynamicContent(); });
             filterBar.getChildren().add(cb);
         }
 
         rightContentBox.getChildren().add(filterBar);
 
         List<EconomyStore.CatalogItem> items = EconomyStore.CATALOG.stream()
+                .filter(it -> !filterDealsOnly || economy.isFeaturedCreatorDeal(it))
                 .filter(it -> filterCategory == null || it.category() == filterCategory)
                 .toList();
 
@@ -245,14 +359,23 @@ public class ShopView {
         for (EconomyStore.CatalogItem item : items) {
             boolean owned = economy.isOwned(item.id());
             boolean equipped = economy.isEquipped(item.id());
+            int discountPct = economy.getDiscountPercent(item);
+            int finalPrice = economy.getEffectivePrice(item);
+            boolean featuredDeal = economy.isFeaturedCreatorDeal(item);
 
             Label catTag = new Label(item.category().label.toUpperCase() + "  •  " + item.rarity());
             catTag.setStyle("-fx-text-fill: " + item.accentHex() + "; -fx-font-size: 10px; -fx-font-weight: bold;");
 
-            Label priceTag = new Label(owned
-                    ? (equipped ? "EQUIPPED ✓" : "OWNED")
-                    : "◈ " + item.price());
-            priceTag.setStyle("-fx-text-fill: " + (owned ? "#86efac" : "#c7d2fe") + "; -fx-font-size: 12px; -fx-font-weight: bold;");
+            String priceText;
+            if (owned) {
+                priceText = equipped ? "EQUIPPED ✓" : "OWNED";
+            } else if (discountPct > 0 && item.price() > 0) {
+                priceText = "◈ " + finalPrice + " (was " + item.price() + ")";
+            } else {
+                priceText = "◈ " + item.price();
+            }
+            Label priceTag = new Label(priceText);
+            priceTag.getStyleClass().add(owned ? "status-success" : (discountPct > 0 ? "status-warning" : "accent-text"));
 
             Region rGap = new Region();
             HBox.setHgrow(rGap, Priority.ALWAYS);
@@ -260,18 +383,29 @@ public class ShopView {
             tagRow.setAlignment(Pos.CENTER_LEFT);
 
             Label name = new Label(item.name());
-            name.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 15px; -fx-font-weight: bold;");
+            name.getStyleClass().add("card-title");
+
+            HBox titleRow = new HBox(8, name);
+            titleRow.setAlignment(Pos.CENTER_LEFT);
+            if (!owned && discountPct > 0 && item.price() > 0) {
+                Label dealBadge = new Label(featuredDeal
+                        ? "★ CREATOR DEAL -" + discountPct + "%"
+                        : "-" + discountPct + "% CODE");
+                dealBadge.getStyleClass().add(featuredDeal ? "badge-warning" : "badge-accent");
+                titleRow.getChildren().add(dealBadge);
+            }
 
             Label desc = UiUtils.mutedLabel(item.description());
             desc.setMinHeight(34);
 
             Button previewBtn = UiUtils.secondaryButton("Preview");
+            previewBtn.setMinWidth(Region.USE_PREF_SIZE);
             previewBtn.setOnAction(e -> applyPreviewItem(item));
 
             Button actionBtn;
             if (!owned) {
-                actionBtn = new Button("Buy  ◈ " + item.price());
-                actionBtn.getStyleClass().add(data.coins >= item.price() ? "primary-button" : "secondary-button");
+                actionBtn = new Button("Buy  ◈ " + finalPrice);
+                actionBtn.getStyleClass().add(data.coins >= finalPrice ? "primary-button" : "secondary-button");
                 actionBtn.setPadding(new Insets(8, 12, 8, 12));
                 actionBtn.setOnAction(e -> {
                     economy.purchaseItem(item.id());
@@ -279,7 +413,7 @@ public class ShopView {
                     refreshDynamicContent();
                 });
             } else if (item.category() == EconomyStore.Category.EMOTE) {
-                actionBtn = UiUtils.secondaryButton("Open Emotes Wheel");
+                actionBtn = UiUtils.secondaryButton("Emotes Wheel");
                 actionBtn.setOnAction(e -> actions.openEmotesTab());
             } else {
                 actionBtn = new Button(equipped ? "Unequip" : "Equip");
@@ -290,14 +424,19 @@ public class ShopView {
                     clearPreviews();
                 });
             }
+            actionBtn.setMinWidth(Region.USE_PREF_SIZE);
 
-            HBox btnRow = new HBox(8, previewBtn, actionBtn);
+            FlowPane btnRow = new FlowPane(8, 8, previewBtn, actionBtn);
             btnRow.setAlignment(Pos.CENTER_LEFT);
 
-            VBox card = UiUtils.card(tagRow, name, desc, btnRow);
+            VBox card = UiUtils.card(tagRow, titleRow, desc, btnRow);
             card.setPadding(new Insets(14));
             if (equipped) {
-                card.setStyle("-fx-background-color: #202432; -fx-background-radius: 15; -fx-border-color: #c7d2fe; -fx-border-radius: 15;");
+                card.getStyleClass().remove("panel-card");
+                card.getStyleClass().add("panel-card-active");
+            } else if (!owned && featuredDeal) {
+                card.getStyleClass().remove("panel-card");
+                card.getStyleClass().add("panel-card-ready");
             }
             grid.add(card, idx % 2, idx / 2);
             idx++;
@@ -330,10 +469,10 @@ public class ShopView {
         boolean ready = economy.isQuestReadyToClaim(q);
 
         Label title = new Label(q.title());
-        title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 14px; -fx-font-weight: bold;");
+        title.getStyleClass().add("card-title");
 
         Label reward = new Label("+◈ " + q.rewardCoins() + " Coins");
-        reward.setStyle("-fx-text-fill: #fcd34d; -fx-font-size: 12px; -fx-font-weight: bold;");
+        reward.getStyleClass().add("status-warning");
 
         Region gap = new Region();
         HBox.setHgrow(gap, Priority.ALWAYS);
@@ -347,7 +486,7 @@ public class ShopView {
         HBox.setHgrow(bar, Priority.ALWAYS);
 
         Label countLbl = new Label(prog + " / " + q.target());
-        countLbl.setStyle("-fx-text-fill: #c7d2fe; -fx-font-size: 12px; -fx-font-weight: bold;");
+        countLbl.getStyleClass().add("accent-text");
 
         Button claimBtn;
         if (claimed) {
@@ -372,7 +511,8 @@ public class ShopView {
         VBox card = UiUtils.card(top, desc, progRow);
         card.setPadding(new Insets(14));
         if (ready) {
-            card.setStyle("-fx-background-color: #202432; -fx-background-radius: 15; -fx-border-color: #86efac; -fx-border-radius: 15;");
+            card.getStyleClass().remove("panel-card");
+            card.getStyleClass().add("panel-card-ready");
         }
         return card;
     }
@@ -391,7 +531,7 @@ public class ShopView {
     private VBox buildWardrobeSlotCard(EconomyService economy, EconomyStore.Category cat, String equippedId) {
         EconomyStore.CatalogItem active = EconomyStore.findItem(equippedId);
         Label slotTitle = new Label(cat.label + ": " + (active != null ? active.name() : "None Equipped"));
-        slotTitle.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 14px; -fx-font-weight: bold;");
+        slotTitle.getStyleClass().add("card-title");
 
         Button clearBtn = UiUtils.secondaryButton("Unequip");
         clearBtn.setDisable(active == null);
@@ -490,17 +630,420 @@ public class ShopView {
         if (auraItem != null) {
             auraBadgeLabel.setText("✦ Active Aura: " + auraItem.name() + " (renders particles in-game)");
             auraBadgeLabel.setStyle(
-                    "-fx-background-color: #15171e; -fx-border-color: " + auraItem.accentHex() + "; -fx-border-radius: 8;"
-                            + "-fx-background-radius: 8; -fx-padding: 6 10 6 10;"
-                            + "-fx-text-fill: " + auraItem.accentHex() + "; -fx-font-size: 11px; -fx-font-weight: bold;"
+                    "-fx-border-color: " + auraItem.accentHex() + ";"
+                            + "-fx-text-fill: " + auraItem.accentHex() + "; -fx-font-weight: bold;"
             );
         } else {
             auraBadgeLabel.setText("Particle Aura: None active");
-            auraBadgeLabel.setStyle(
-                    "-fx-background-color: #15171e; -fx-border-color: #2b3040; -fx-border-radius: 8;"
-                            + "-fx-background-radius: 8; -fx-padding: 6 10 6 10;"
-                            + "-fx-text-fill: #9ca3af; -fx-font-size: 11px;"
+            auraBadgeLabel.setStyle("");
+        }
+    }
+
+    private void openAdminPanelDialog(EconomyService economy) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("JJN Admin Panel");
+        dialog.setHeaderText("Owner Controls — Gift Coins, Cosmetics, Quests & Creator Codes");
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        dialog.setResizable(true);
+        UiUtils.styleDialog(dialog);
+
+        VBox content = createAdminPanelContent(economy);
+        ScrollPane scroll = new ScrollPane(content);
+        scroll.setFitToWidth(true);
+        scroll.setPrefSize(660, 560);
+        scroll.getStyleClass().add("scroll-pane");
+
+        dialog.getDialogPane().setContent(scroll);
+        dialog.getDialogPane().setPrefWidth(700);
+        dialog.showAndWait();
+    }
+
+    public VBox createAdminPanelContent(EconomyService economy) {
+        Label summaryLbl = new Label();
+        summaryLbl.getStyleClass().add("card-title");
+        summaryLbl.setWrapText(true);
+
+        Label adminStatus = new Label("Admin controls active — changes save immediately to ~/.jjnclient.");
+        adminStatus.getStyleClass().add("status-success");
+        adminStatus.setWrapText(true);
+
+        ComboBox<EconomyStore.CatalogItem> itemCombo = new ComboBox<>(
+                FXCollections.observableArrayList(EconomyStore.CATALOG)
+        );
+        itemCombo.setMaxWidth(Double.MAX_VALUE);
+        itemCombo.setCellFactory(lv -> catalogComboCell(economy));
+        itemCombo.setButtonCell(catalogComboCell(economy));
+        if (!EconomyStore.CATALOG.isEmpty()) {
+            itemCombo.getSelectionModel().selectFirst();
+        }
+
+        VBox customCodesListBox = new VBox(8);
+
+        TextField codeInput = new TextField();
+        codeInput.getStyleClass().add("input-field");
+        codeInput.setPromptText("Code (e.g. PARTNER)");
+
+        TextField creatorNameInput = new TextField();
+        creatorNameInput.getStyleClass().add("input-field");
+        creatorNameInput.setPromptText("Creator Name (e.g. Alex)");
+
+        TextField discountInput = new TextField("20");
+        discountInput.getStyleClass().add("input-field");
+        discountInput.setPromptText("Shop % (0-90)");
+
+        TextField dealDiscountInput = new TextField("35");
+        dealDiscountInput.getStyleClass().add("input-field");
+        dealDiscountInput.setPromptText("Featured Deal % (0-90)");
+
+        TextField bonusCoinsInput = new TextField("100");
+        bonusCoinsInput.getStyleClass().add("input-field");
+        bonusCoinsInput.setPromptText("One-time Bonus Coins");
+
+        TextField taglineInput = new TextField();
+        taglineInput.getStyleClass().add("input-field");
+        taglineInput.setPromptText("Tagline shown in Shop");
+
+        TextField featuredIdsInput = new TextField();
+        featuredIdsInput.getStyleClass().add("input-field");
+        featuredIdsInput.setPromptText("Optional Featured IDs (comma-separated, e.g. cape_jjn_nova, hat_crown)");
+
+        Runnable[] refreshRef = new Runnable[1];
+        Runnable syncAll = () -> {
+            EconomyStore.EconomyData d = economy.snapshot();
+            summaryLbl.setText(
+                    "Coins: " + d.coins + " ◈   •   Lifetime Earned: " + d.totalEarned
+                            + " ◈   •   Owned: " + d.ownedItems.size() + "/" + EconomyStore.CATALOG.size()
             );
+            String msg = economy.getLastMessage();
+            if (msg != null && !msg.isBlank()) {
+                adminStatus.setText(msg);
+                adminStatus.getStyleClass().setAll("status-success");
+            }
+            int selIdx = Math.max(0, itemCombo.getSelectionModel().getSelectedIndex());
+            itemCombo.setItems(FXCollections.observableArrayList(EconomyStore.CATALOG));
+            itemCombo.setButtonCell(catalogComboCell(economy));
+            if (!EconomyStore.CATALOG.isEmpty()) {
+                itemCombo.getSelectionModel().select(Math.min(selIdx, EconomyStore.CATALOG.size() - 1));
+            }
+            if (refreshRef[0] != null) {
+                refreshRef[0].run();
+            }
+            refreshDynamicContent();
+        };
+
+        refreshRef[0] = () -> {
+            customCodesListBox.getChildren().clear();
+            List<EconomyStore.CreatorCodeDef> customCodes = EconomyStore.loadCustomCreatorCodes();
+            if (customCodes.isEmpty()) {
+                customCodesListBox.getChildren().add(UiUtils.mutedLabel("No custom Creator Codes saved in creator-codes.json yet."));
+                return;
+            }
+            for (EconomyStore.CreatorCodeDef def : customCodes) {
+                if (def == null) continue;
+                Label codeTitle = new Label(def.code() + " — " + (def.creatorName() != null ? def.creatorName() : def.code()));
+                codeTitle.getStyleClass().add("card-title");
+
+                Label codeMeta = UiUtils.mutedLabel(
+                        def.discountPercent() + "% off Shop  •  " + def.dealDiscountPercent()
+                                + "% Featured  •  +" + def.bonusCoins() + " ◈ bonus"
+                                + (def.tagline() != null && !def.tagline().isBlank() ? "\n" + def.tagline() : "")
+                );
+
+                VBox info = new VBox(2, codeTitle, codeMeta);
+                HBox.setHgrow(info, Priority.ALWAYS);
+
+                Button editBtn = UiUtils.secondaryButton("Edit");
+                editBtn.setMinWidth(Region.USE_PREF_SIZE);
+                editBtn.setOnAction(e -> {
+                    codeInput.setText(def.code());
+                    creatorNameInput.setText(def.creatorName() != null ? def.creatorName() : "");
+                    discountInput.setText(String.valueOf(def.discountPercent()));
+                    dealDiscountInput.setText(String.valueOf(def.dealDiscountPercent()));
+                    bonusCoinsInput.setText(String.valueOf(def.bonusCoins()));
+                    taglineInput.setText(def.tagline() != null ? def.tagline() : "");
+                    featuredIdsInput.setText(def.featuredItemIds() != null ? String.join(", ", def.featuredItemIds()) : "");
+                    adminStatus.setText("Loaded [" + def.code() + "] into editor.");
+                    adminStatus.getStyleClass().setAll("status-success");
+                });
+
+                Button deleteBtn = UiUtils.dangerButton("Delete");
+                deleteBtn.setMinWidth(Region.USE_PREF_SIZE);
+                deleteBtn.setOnAction(e -> {
+                    economy.adminDeleteCreatorCode(def.code());
+                    syncAll.run();
+                });
+
+                HBox row = new HBox(10, info, editBtn, deleteBtn);
+                row.setAlignment(Pos.CENTER_LEFT);
+                row.getStyleClass().add("selection-bar");
+                customCodesListBox.getChildren().add(row);
+            }
+        };
+
+        // --- 1. Gift / Manage JJN Coins ---
+        FlowPane quickCoinsRow = new FlowPane(8, 8);
+        for (int delta : new int[]{100, 500, 1000, 5000}) {
+            Button b = new Button("+" + String.format("%,d", delta) + " ◈");
+            b.getStyleClass().add("primary-button");
+            b.setPadding(new Insets(7, 12, 7, 12));
+            b.setMinWidth(Region.USE_PREF_SIZE);
+            b.setOnAction(e -> {
+                economy.adminGiftCoins(delta);
+                syncAll.run();
+            });
+            quickCoinsRow.getChildren().add(b);
+        }
+
+        TextField customCoinsField = new TextField();
+        customCoinsField.getStyleClass().add("input-field");
+        customCoinsField.setPromptText("Custom amount (e.g. 2500)");
+        customCoinsField.setPrefWidth(210);
+
+        Button giftCustomBtn = new Button("Gift Coins");
+        giftCustomBtn.getStyleClass().add("primary-button");
+        giftCustomBtn.setPadding(new Insets(8, 14, 8, 14));
+        giftCustomBtn.setMinWidth(Region.USE_PREF_SIZE);
+        giftCustomBtn.setOnAction(e -> {
+            Integer amt = parseStrictInt(customCoinsField.getText());
+            if (amt == null) {
+                adminStatus.setText("Enter a valid whole number of JJN Coins to gift.");
+                adminStatus.getStyleClass().setAll("status-warning");
+                return;
+            }
+            economy.adminGiftCoins(amt);
+            syncAll.run();
+        });
+
+        Button setExactBtn = UiUtils.secondaryButton("Set Balance");
+        setExactBtn.setMinWidth(Region.USE_PREF_SIZE);
+        setExactBtn.setOnAction(e -> {
+            Integer amt = parseStrictInt(customCoinsField.getText());
+            if (amt == null || amt < 0) {
+                adminStatus.setText("Enter 0 or higher to set exact coin balance.");
+                adminStatus.getStyleClass().setAll("status-warning");
+                return;
+            }
+            economy.adminSetCoins(amt);
+            syncAll.run();
+        });
+
+        Button resetCoinsBtn = UiUtils.dangerButton("Reset to 60 ◈");
+        resetCoinsBtn.setMinWidth(Region.USE_PREF_SIZE);
+        resetCoinsBtn.setOnAction(e -> {
+            economy.adminSetCoins(60);
+            syncAll.run();
+        });
+
+        FlowPane customCoinsRow = new FlowPane(8, 8, customCoinsField, giftCustomBtn, setExactBtn, resetCoinsBtn);
+        customCoinsRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox coinsCard = UiUtils.card(
+                UiUtils.sectionTitle("Gift & Manage JJN Coins"),
+                UiUtils.mutedLabel("Instantly add coins, set an exact balance, or reset to starter coins."),
+                quickCoinsRow,
+                customCoinsRow
+        );
+
+        // --- 2. Cosmetics & Emotes ---
+        Button grantItemBtn = new Button("Grant & Equip");
+        grantItemBtn.getStyleClass().add("primary-button");
+        grantItemBtn.setPadding(new Insets(8, 14, 8, 14));
+        grantItemBtn.setMinWidth(Region.USE_PREF_SIZE);
+        grantItemBtn.setOnAction(e -> {
+            EconomyStore.CatalogItem sel = itemCombo.getValue();
+            if (sel != null) {
+                economy.adminGrantItem(sel.id());
+                syncAll.run();
+            }
+        });
+
+        Button revokeItemBtn = UiUtils.dangerButton("Revoke Item");
+        revokeItemBtn.setMinWidth(Region.USE_PREF_SIZE);
+        revokeItemBtn.setOnAction(e -> {
+            EconomyStore.CatalogItem sel = itemCombo.getValue();
+            if (sel != null) {
+                economy.adminRevokeItem(sel.id());
+                syncAll.run();
+            }
+        });
+
+        Button unlockAllBtn = UiUtils.secondaryButton("Unlock All (" + EconomyStore.CATALOG.size() + ")");
+        unlockAllBtn.setMinWidth(Region.USE_PREF_SIZE);
+        unlockAllBtn.setOnAction(e -> {
+            economy.adminUnlockAllItems();
+            syncAll.run();
+        });
+
+        Button resetItemsBtn = UiUtils.dangerButton("Reset to Starter");
+        resetItemsBtn.setMinWidth(Region.USE_PREF_SIZE);
+        resetItemsBtn.setOnAction(e -> {
+            economy.adminResetToStarter();
+            syncAll.run();
+        });
+
+        FlowPane itemBtnsRow = new FlowPane(8, 8, grantItemBtn, revokeItemBtn, unlockAllBtn, resetItemsBtn);
+        itemBtnsRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox itemsCard = UiUtils.card(
+                UiUtils.sectionTitle("Cosmetics & Emotes"),
+                UiUtils.mutedLabel("Grant or revoke individual Capes, Wings, Hats, Auras, and Emotes, or unlock the full catalog."),
+                itemCombo,
+                itemBtnsRow
+        );
+
+        // --- 3. Quests ---
+        Button completeQuestsBtn = new Button("Complete All Quests");
+        completeQuestsBtn.getStyleClass().add("primary-button");
+        completeQuestsBtn.setPadding(new Insets(8, 14, 8, 14));
+        completeQuestsBtn.setMinWidth(Region.USE_PREF_SIZE);
+        completeQuestsBtn.setOnAction(e -> {
+            economy.adminCompleteAllQuests();
+            syncAll.run();
+        });
+
+        Button resetQuestsBtn = UiUtils.dangerButton("Reset Quests");
+        resetQuestsBtn.setMinWidth(Region.USE_PREF_SIZE);
+        resetQuestsBtn.setOnAction(e -> {
+            economy.adminResetQuests();
+            syncAll.run();
+        });
+
+        FlowPane questBtnsRow = new FlowPane(8, 8, completeQuestsBtn, resetQuestsBtn);
+        questBtnsRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox questsCard = UiUtils.card(
+                UiUtils.sectionTitle("Quests"),
+                UiUtils.mutedLabel("Mark all Daily & Lifetime quests ready to claim, or reset progress."),
+                questBtnsRow
+        );
+
+        // --- 4. Custom Creator Codes ---
+        GridPane codeGrid = new GridPane();
+        codeGrid.setHgap(10);
+        codeGrid.setVgap(8);
+        for (int i = 0; i < 2; i++) {
+            ColumnConstraints cc = new ColumnConstraints();
+            cc.setPercentWidth(50);
+            codeGrid.getColumnConstraints().add(cc);
+        }
+        codeGrid.add(labeledField("Code", codeInput), 0, 0);
+        codeGrid.add(labeledField("Creator Name", creatorNameInput), 1, 0);
+        codeGrid.add(labeledField("Shop Discount %", discountInput), 0, 1);
+        codeGrid.add(labeledField("Featured Deal %", dealDiscountInput), 1, 1);
+        codeGrid.add(labeledField("Bonus Coins", bonusCoinsInput), 0, 2);
+        codeGrid.add(labeledField("Tagline", taglineInput), 1, 2);
+        VBox featuredWrap = labeledField("Featured Item IDs (comma-separated)", featuredIdsInput);
+        codeGrid.add(featuredWrap, 0, 3, 2, 1);
+
+        Button saveCodeBtn = new Button("Save Creator Code");
+        saveCodeBtn.getStyleClass().add("primary-button");
+        saveCodeBtn.setPadding(new Insets(8, 14, 8, 14));
+        saveCodeBtn.setMinWidth(Region.USE_PREF_SIZE);
+        saveCodeBtn.setOnAction(e -> {
+            String normalized = EconomyStore.normalizeCode(codeInput.getText());
+            if (normalized.isEmpty()) {
+                adminStatus.setText("Enter a Creator Code name first.");
+                adminStatus.getStyleClass().setAll("status-warning");
+                return;
+            }
+            if (EconomyStore.isAdminCode(normalized)) {
+                adminStatus.setText("Cannot save the secret admin access code as a Creator Code.");
+                adminStatus.getStyleClass().setAll("status-warning");
+                return;
+            }
+            Integer disc = parseIntOrZero(discountInput.getText());
+            Integer dealDisc = parseIntOrZero(dealDiscountInput.getText());
+            Integer bonus = parseIntOrZero(bonusCoinsInput.getText());
+            if (disc == null || dealDisc == null || bonus == null) {
+                adminStatus.setText("Discounts and Bonus Coins must be valid whole numbers.");
+                adminStatus.getStyleClass().setAll("status-warning");
+                return;
+            }
+            List<String> featured = new ArrayList<>();
+            for (String part : featuredIdsInput.getText().split(",")) {
+                String trimmed = part.trim();
+                if (!trimmed.isEmpty()) featured.add(trimmed);
+            }
+            EconomyStore.CreatorCodeDef def = new EconomyStore.CreatorCodeDef(
+                    normalized,
+                    creatorNameInput.getText().trim(),
+                    disc,
+                    dealDisc,
+                    featured,
+                    bonus,
+                    taglineInput.getText().trim()
+            );
+            economy.adminSaveCreatorCode(def);
+            syncAll.run();
+        });
+
+        Button openJsonBtn = UiUtils.secondaryButton("Open creator-codes.json Folder");
+        openJsonBtn.setMinWidth(Region.USE_PREF_SIZE);
+        openJsonBtn.setOnAction(e -> {
+            EconomyStore.loadCustomCreatorCodes();
+            UiUtils.openInExplorer(EconomyStore.creatorCodesFile().getParent());
+        });
+
+        FlowPane codeActionsRow = new FlowPane(8, 8, saveCodeBtn, openJsonBtn);
+        codeActionsRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox codesCard = UiUtils.card(
+                UiUtils.sectionTitle("Creator Codes Manager"),
+                UiUtils.mutedLabel("Built-in codes: JJN, BLUE, VIP, WELCOME. Create or delete custom codes saved in creator-codes.json."),
+                codeGrid,
+                codeActionsRow,
+                new Separator(),
+                customCodesListBox
+        );
+
+        VBox headerBanner = new VBox(6, summaryLbl, adminStatus);
+        headerBanner.getStyleClass().add("loader-banner");
+
+        VBox root = new VBox(14, headerBanner, coinsCard, itemsCard, questsCard, codesCard);
+        root.setPadding(new Insets(4, 8, 8, 4));
+
+        syncAll.run();
+        return root;
+    }
+
+    private VBox labeledField(String label, Control control) {
+        Label lbl = new Label(label);
+        lbl.getStyleClass().add("field-label");
+        return new VBox(4, lbl, control);
+    }
+
+    private ListCell<EconomyStore.CatalogItem> catalogComboCell(EconomyService economy) {
+        return new ListCell<>() {
+            @Override
+            protected void updateItem(EconomyStore.CatalogItem item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    String status = economy.isOwned(item.id()) ? "OWNED" : "◈ " + item.price();
+                    setText(item.name() + " (" + item.category().label + ") — " + status);
+                    setGraphic(null);
+                }
+            }
+        };
+    }
+
+    private static Integer parseStrictInt(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static Integer parseIntOrZero(String raw) {
+        if (raw == null || raw.isBlank()) return 0;
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException ex) {
+            return null;
         }
     }
 }

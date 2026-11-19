@@ -298,10 +298,11 @@ public class SkinPreviewCanvas extends Canvas {
         gc.clearRect(0, 0, w, h);
 
         // Pedestal ring
-        gc.setFill(Color.rgb(16, 17, 22, 0.7));
+        Color accent = ThemeManager.accentColor();
+        gc.setFill(Color.rgb(8, 12, 22, 0.72));
         gc.fillOval(w * 0.24, h * 0.86, w * 0.52, h * 0.08);
-        gc.setStroke(Color.web("#c7d2fe", 0.35));
-        gc.setLineWidth(1.2);
+        gc.setStroke(Color.color(accent.getRed(), accent.getGreen(), accent.getBlue(), 0.55));
+        gc.setLineWidth(1.5);
         gc.strokeOval(w * 0.24, h * 0.86, w * 0.52, h * 0.08);
 
         EmotePose pose = sampleEmotePose();

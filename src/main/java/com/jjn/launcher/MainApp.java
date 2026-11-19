@@ -14,10 +14,12 @@ import com.jjn.launcher.ui.ConsoleView;
 import com.jjn.launcher.ui.EmotesView;
 import com.jjn.launcher.ui.FriendsView;
 import com.jjn.launcher.ui.InstancesView;
+import com.jjn.launcher.ui.KeybindsView;
 import com.jjn.launcher.ui.ModsView;
 import com.jjn.launcher.ui.ProfilesView;
 import com.jjn.launcher.ui.SettingsView;
 import com.jjn.launcher.ui.ShopView;
+import com.jjn.launcher.ui.ThemeManager;
 import com.jjn.launcher.ui.UiUtils;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -43,7 +45,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class MainApp extends Application {
 
     private enum Page {
-        HOME, INSTANCES, MODS, PROFILES, FRIENDS, EMOTES, CONSOLE, SETTINGS, SHOP
+        HOME, INSTANCES, MODS, PROFILES, FRIENDS, EMOTES, KEYBINDS, CONSOLE, SETTINGS, SHOP
     }
 
     private final Path instancesPath = LauncherSettings.instancesDir();
@@ -66,6 +68,7 @@ public class MainApp extends Application {
     private final ProfilesView profilesView = new ProfilesView();
     private final FriendsView friendsView = new FriendsView();
     private final EmotesView emotesView = new EmotesView();
+    private final KeybindsView keybindsView = new KeybindsView();
     private final SettingsView settingsView = new SettingsView();
     private final ShopView shopView = new ShopView();
 
@@ -98,6 +101,7 @@ public class MainApp extends Application {
     private Button navProfiles;
     private Button navFriends;
     private Button navEmotes;
+    private Button navKeybinds;
     private Button navConsole;
     private Button navSettings;
     private Button navShop;
@@ -126,6 +130,7 @@ public class MainApp extends Application {
     @Override
     public void start(Stage stage) {
         primaryStage = stage;
+        ThemeManager.ensureFontsLoaded();
         settings = LauncherSettings.load();
         accountState = accountStore.load();
         profileStore = profileService.load();
@@ -136,16 +141,13 @@ public class MainApp extends Application {
         createSidebar();
         showHome();
 
-        Scene scene = new Scene(root, 1140, 740);
-        var cssUrl = getClass().getResource("/com/jjn/launcher/styles.css");
-        if (cssUrl != null) {
-            scene.getStylesheets().add(cssUrl.toExternalForm());
-        }
+        Scene scene = new Scene(root, 1180, 760);
+        ThemeManager.apply(scene, settings);
 
         stage.setTitle("JJN Client");
         UiUtils.applyAppIcon(stage);
-        stage.setMinWidth(940);
-        stage.setMinHeight(660);
+        stage.setMinWidth(980);
+        stage.setMinHeight(680);
         stage.setScene(scene);
         stage.show();
 
@@ -174,6 +176,7 @@ public class MainApp extends Application {
     @Override
     public void stop() {
         emotesView.onLeave();
+        keybindsView.onLeave();
         shopView.onLeave();
         friendsService.shutdown();
         economyService.shutdown();
@@ -182,33 +185,34 @@ public class MainApp extends Application {
     // SIDEBAR
 
     private void createSidebar() {
-        VBox sidebar = new VBox(8);
-        sidebar.setPadding(new Insets(26, 16, 20, 16));
-        sidebar.setPrefWidth(240);
+        VBox sidebar = new VBox(6);
+        sidebar.setPadding(new Insets(18, 14, 16, 14));
+        sidebar.setPrefWidth(264);
+        sidebar.setMinWidth(256);
         sidebar.getStyleClass().add("sidebar");
 
         ImageView brandIcon = new ImageView(UiUtils.appLogoImage());
-        brandIcon.setFitWidth(36);
-        brandIcon.setFitHeight(36);
+        brandIcon.setFitWidth(34);
+        brandIcon.setFitHeight(34);
         brandIcon.setPreserveRatio(true);
         brandIcon.setSmooth(true);
 
         Label logo = new Label("JJN");
         logo.getStyleClass().add("brand-title");
 
-        Label subtitle = new Label("CLIENT");
+        Label subtitle = new Label("CLIENT LAUNCHER");
         subtitle.getStyleClass().add("brand-subtitle");
 
-        VBox brandText = new VBox(0, logo, subtitle);
+        VBox brandText = new VBox(1, logo, subtitle);
         brandText.setAlignment(Pos.CENTER_LEFT);
 
         HBox logoBox = new HBox(10, brandIcon, brandText);
         logoBox.setAlignment(Pos.CENTER_LEFT);
-        logoBox.setPadding(new Insets(0, 0, 26, 4));
+        logoBox.getStyleClass().add("brand-header");
 
-        Label menu = new Label("WORKSPACE");
+        Label menu = new Label("NAVIGATION");
         menu.getStyleClass().add("nav-section-label");
-        menu.setPadding(new Insets(0, 0, 4, 8));
+        menu.setPadding(new Insets(8, 0, 2, 4));
 
         navHome = navButton("⌂   Home", false);
         navInstances = navButton("▦   Instances", false);
@@ -216,6 +220,7 @@ public class MainApp extends Application {
         navProfiles = navButton("☺   Profiles & Skin", false);
         navFriends = navButton("◎   Friends", false);
         navEmotes = navButton("✧   Emotes", false);
+        navKeybinds = navButton("⌨   Keybinds", false);
         navConsole = navButton(">_  Console", false);
         navSettings = navButton("⚙   Settings", false);
 
@@ -225,6 +230,7 @@ public class MainApp extends Application {
         navProfiles.setOnAction(e -> showProfiles());
         navFriends.setOnAction(e -> showFriends());
         navEmotes.setOnAction(e -> showEmotes());
+        navKeybinds.setOnAction(e -> showKeybinds());
         navConsole.setOnAction(e -> showConsole());
         navSettings.setOnAction(e -> showSettings());
 
@@ -239,7 +245,7 @@ public class MainApp extends Application {
 
         accountNameLabel = new Label("Player account");
         accountNameLabel.setWrapText(true);
-        accountNameLabel.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 13px; -fx-font-weight: bold;");
+        accountNameLabel.getStyleClass().add("account-name");
 
         HBox accountNameRow = new HBox(6, accountCreeperBadge, accountNameLabel);
         accountNameRow.setAlignment(Pos.CENTER_LEFT);
@@ -249,8 +255,8 @@ public class MainApp extends Application {
         accountStatusLabel.getStyleClass().add("muted-text");
 
         accountHead = new ImageView();
-        accountHead.setFitWidth(38);
-        accountHead.setFitHeight(38);
+        accountHead.setFitWidth(36);
+        accountHead.setFitHeight(36);
         accountHead.setSmooth(false);
         UiUtils.setHeadImage(accountHead, null);
 
@@ -273,14 +279,14 @@ public class MainApp extends Application {
             }
         });
 
-        switchAccountButton = UiUtils.secondaryButton("Switch / Add account");
+        switchAccountButton = UiUtils.secondaryButton("Switch Account");
         switchAccountButton.setMaxWidth(Double.MAX_VALUE);
         switchAccountButton.setVisible(false);
         switchAccountButton.setManaged(false);
         switchAccountButton.setOnAction(e -> openAccountSwitcher());
 
         VBox accountBox = new VBox(8, identity, accountButton, switchAccountButton);
-        accountBox.setPadding(new Insets(14));
+        accountBox.setPadding(new Insets(12));
         accountBox.getStyleClass().add("account-card");
 
         sidebar.getChildren().addAll(
@@ -292,6 +298,7 @@ public class MainApp extends Application {
                 navProfiles,
                 navFriends,
                 navEmotes,
+                navKeybinds,
                 navConsole,
                 navSettings,
                 spacer,
@@ -311,7 +318,7 @@ public class MainApp extends Application {
     }
 
     private void updateNavHighlight() {
-        List<Button> standard = List.of(navHome, navInstances, navMods, navProfiles, navFriends, navEmotes, navConsole, navSettings);
+        List<Button> standard = List.of(navHome, navInstances, navMods, navProfiles, navFriends, navEmotes, navKeybinds, navConsole, navSettings);
         for (Button btn : standard) {
             btn.getStyleClass().remove("nav-button-active");
         }
@@ -324,6 +331,7 @@ public class MainApp extends Application {
             case PROFILES -> navProfiles.getStyleClass().add("nav-button-active");
             case FRIENDS -> navFriends.getStyleClass().add("nav-button-active");
             case EMOTES -> navEmotes.getStyleClass().add("nav-button-active");
+            case KEYBINDS -> navKeybinds.getStyleClass().add("nav-button-active");
             case CONSOLE -> navConsole.getStyleClass().add("nav-button-active");
             case SETTINGS -> navSettings.getStyleClass().add("nav-button-active");
             case SHOP -> navShop.getStyleClass().add("nav-button-active");
@@ -417,15 +425,15 @@ public class MainApp extends Application {
         AtomicReference<String> verificationUri = new AtomicReference<>();
 
         Label codeLabel = new Label("Connecting...");
-        codeLabel.setStyle("-fx-text-fill: white; -fx-font-size: 28px; -fx-font-weight: bold;");
+        codeLabel.getStyleClass().add("hero-heading");
 
         Label hint = new Label("Open the Microsoft page, then enter this code.");
         hint.setWrapText(true);
-        hint.setStyle("-fx-text-fill: #a2a6b5; -fx-font-size: 12px;");
+        hint.getStyleClass().add("muted-text");
 
         Label statusLabel = new Label("Starting Microsoft authentication...");
         statusLabel.setWrapText(true);
-        statusLabel.setStyle("-fx-text-fill: #85899a; -fx-font-size: 12px;");
+        statusLabel.getStyleClass().add("muted-text");
 
         Button openButton = new Button("Open Microsoft login page");
         openButton.setDisable(true);
@@ -549,7 +557,7 @@ public class MainApp extends Application {
         for (AccountStore.SavedAccount acc : new ArrayList<>(accountState.accounts)) {
             ImageView badge = UiUtils.creeperBadgeView(15);
             Label name = new Label(acc.playerName);
-            name.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
+            name.getStyleClass().add("card-title");
             HBox nameWithIcon = new HBox(7, badge, name);
             nameWithIcon.setAlignment(Pos.CENTER_LEFT);
 
@@ -648,6 +656,9 @@ public class MainApp extends Application {
         if (currentPage == Page.EMOTES && page != Page.EMOTES) {
             emotesView.onLeave();
         }
+        if (currentPage == Page.KEYBINDS && page != Page.KEYBINDS) {
+            keybindsView.onLeave();
+        }
         if (currentPage == Page.SHOP && page != Page.SHOP) {
             shopView.onLeave();
         }
@@ -680,32 +691,40 @@ public class MainApp extends Application {
     private void showHome() {
         createPage("Welcome back", Page.HOME);
 
-        VBox hero = new VBox(16);
-        hero.setPadding(new Insets(32));
+        VBox hero = new VBox(15);
+        hero.setPadding(new Insets(28));
         hero.getStyleClass().add("hero-card");
 
         Label tag = new Label("YOUR MINECRAFT EXPERIENCE");
         tag.getStyleClass().add("accent-text");
 
+        installedLabel = new Label();
+        installedLabel.getStyleClass().add("badge-accent");
+        updateInstalledLabel();
+
+        Region heroTopGap = new Region();
+        HBox.setHgrow(heroTopGap, Priority.ALWAYS);
+        HBox heroTopRow = new HBox(10, tag, heroTopGap, installedLabel);
+        heroTopRow.setAlignment(Pos.CENTER_LEFT);
+
         Label heading = new Label("Ready to play?");
-        heading.setStyle("-fx-text-fill: white; -fx-font-size: 34px; -fx-font-weight: bold;");
+        heading.getStyleClass().add("hero-heading");
 
         Label description = new Label("Your game. Your settings. Your experience.");
-        description.setStyle("-fx-text-fill: #a2a6b5; -fx-font-size: 14px;");
+        description.getStyleClass().add("hero-subtitle");
 
         homeSelector = UiUtils.instanceComboBox(instances, selectedInstance);
-        homeSelector.setPrefWidth(290);
-
-        installedLabel = new Label();
-        installedLabel.getStyleClass().add("accent-text");
-        updateInstalledLabel();
+        homeSelector.setPrefWidth(280);
+        homeSelector.setMaxWidth(Double.MAX_VALUE);
 
         versionBox = new ComboBox<>();
         versionBox.setPrefWidth(135);
+        versionBox.setMinWidth(120);
         versionBox.setPromptText("Version");
 
         selectDefaultLoader();
         homeLoaderBar = createHomeLoaderBar();
+        homeLoaderBar.setMaxWidth(Region.USE_PREF_SIZE);
 
         if (!releases.isEmpty()) {
             versionBox.setItems(FXCollections.observableArrayList(releases));
@@ -716,14 +735,18 @@ public class MainApp extends Application {
 
         installButton = UiUtils.secondaryButton("Install / Update");
         installButton.setPrefHeight(36);
+        installButton.setMinWidth(Region.USE_PREF_SIZE);
 
         VBox instanceCol = new VBox(4, subtleLabel("INSTANCE"), homeSelector);
+        HBox.setHgrow(instanceCol, Priority.ALWAYS);
         VBox versionCol = new VBox(4, subtleLabel("VERSION"), versionBox);
-        VBox loaderCol = new VBox(4, subtleLabel("MOD LOADER"), homeLoaderBar);
         VBox actionCol = new VBox(4, subtleLabel(" "), installButton);
 
-        HBox selectionBar = new HBox(12, instanceCol, versionCol, loaderCol, actionCol);
-        selectionBar.setAlignment(Pos.CENTER_LEFT);
+        HBox selectionTopRow = new HBox(12, instanceCol, versionCol, actionCol);
+        selectionTopRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox loaderCol = new VBox(4, subtleLabel("MOD LOADER"), homeLoaderBar);
+        VBox selectionBar = new VBox(10, selectionTopRow, loaderCol);
         selectionBar.getStyleClass().add("selection-bar");
 
         quickPlayField = new TextField(
@@ -733,7 +756,7 @@ public class MainApp extends Application {
         );
         quickPlayField.getStyleClass().add("input-field");
         quickPlayField.setPromptText("Quick Play server (optional, e.g. mc.hypixel.net)");
-        quickPlayField.setMaxWidth(420);
+        quickPlayField.setMaxWidth(440);
         quickPlayField.focusedProperty().addListener((obs, was, now) -> {
             if (!now) {
                 persistQuickPlayField();
@@ -741,12 +764,12 @@ public class MainApp extends Application {
         });
 
         installProgress = new ProgressBar(0);
-        installProgress.setPrefWidth(420);
+        installProgress.setPrefWidth(440);
         installProgress.setVisible(false);
         installProgress.setManaged(false);
 
-        playButton = new Button("▶     PLAY MINECRAFT");
-        playButton.setPrefSize(220, 48);
+        playButton = new Button("▶   PLAY MINECRAFT");
+        playButton.setPrefSize(240, 48);
         playButton.getStyleClass().add("primary-button");
 
         offlineButton = UiUtils.secondaryButton("Offline test launch");
@@ -787,10 +810,9 @@ public class MainApp extends Application {
         offlineButton.setOnAction(e -> playMinecraft(true));
 
         hero.getChildren().addAll(
-                tag,
+                heroTopRow,
                 heading,
                 description,
-                installedLabel,
                 selectionBar,
                 quickPlayField,
                 installProgress,
@@ -847,12 +869,15 @@ public class MainApp extends Application {
                     )
             );
         }
+        clientModCard.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(clientModCard, Priority.ALWAYS);
 
-        Button browseModsBtn = UiUtils.secondaryButton("Browse CurseForge & Modrinth");
+        Button browseModsBtn = UiUtils.secondaryButton("Browse Mods");
+        browseModsBtn.setMinWidth(Region.USE_PREF_SIZE);
         browseModsBtn.setOnAction(e -> showMods());
 
         Button openProfilesBtn = UiUtils.secondaryButton("Profiles & Skin");
+        openProfilesBtn.setMinWidth(Region.USE_PREF_SIZE);
         openProfilesBtn.setOnAction(e -> showProfiles());
 
         ClientProfile activeProfile = profileStore.findActive();
@@ -860,19 +885,20 @@ public class MainApp extends Application {
                 ? "Active profile: Default"
                 : "Active profile: " + activeProfile.name;
 
-        HBox modCardActions = new HBox(8, browseModsBtn, openProfilesBtn);
+        FlowPane modCardActions = new FlowPane(8, 8, browseModsBtn, openProfilesBtn);
 
         VBox modsSummaryCard = UiUtils.card(
                 UiUtils.sectionTitle("Active Instance & Profile"),
                 UiUtils.mutedLabel(describeSelectedMods() + "\n" + profileNote),
                 modCardActions
         );
+        modsSummaryCard.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(modsSummaryCard, Priority.ALWAYS);
 
         HBox infoRow = new HBox(16, clientModCard, modsSummaryCard);
 
         Label footer = new Label("JJN CLIENT  •  YOUR MINECRAFT EXPERIENCE");
-        footer.setStyle("-fx-text-fill: #565b69; -fx-font-size: 10px;");
+        footer.getStyleClass().add("footer-text");
 
         setPageBody(new VBox(18, hero, infoRow, footer));
     }
@@ -1401,6 +1427,28 @@ public class MainApp extends Application {
         setPageBody(body);
     }
 
+    private void showKeybinds() {
+        createPage("Keybinds & Controls", Page.KEYBINDS);
+        Node body = keybindsView.build(new KeybindsView.Actions() {
+            @Override
+            public List<Instance> instances() {
+                return instances;
+            }
+
+            @Override
+            public Instance selectedInstance() {
+                return selectedInstance;
+            }
+
+            @Override
+            public void onSelectInstance(Instance instance) {
+                selectedInstance = instance;
+                saveSelectedInstance();
+            }
+        });
+        setPageBody(body);
+    }
+
     private void showConsole() {
         createPage("Console", Page.CONSOLE);
         setPageBody(consoleView.build());
@@ -1506,6 +1554,7 @@ public class MainApp extends Application {
         for (String name : loaders) {
             ToggleButton btn = new ToggleButton(name);
             btn.getStyleClass().add("pill-toggle");
+            btn.setMinWidth(Region.USE_PREF_SIZE);
             btn.setToggleGroup(group);
             btn.setSelected(name.equalsIgnoreCase(active));
             btn.setOnAction(e -> {
@@ -1537,7 +1586,7 @@ public class MainApp extends Application {
 
     private static Label subtleLabel(String text) {
         Label label = new Label(text);
-        label.setStyle("-fx-text-fill: #85899a; -fx-font-size: 10px; -fx-font-weight: bold;");
+        label.getStyleClass().add("subtle-text");
         return label;
     }
 
@@ -1783,7 +1832,6 @@ public class MainApp extends Application {
 
         CheckBox installNowCheck = new CheckBox("Install Minecraft + loader immediately");
         installNowCheck.setSelected(true);
-        installNowCheck.setStyle("-fx-text-fill: #e5e7eb; -fx-font-size: 12px;");
 
         VBox content = new VBox(
                 12,
@@ -1978,7 +2026,7 @@ public class MainApp extends Application {
 
     private static Label fieldLabel(String text) {
         Label lbl = new Label(text);
-        lbl.setStyle("-fx-text-fill: #e5e7eb; -fx-font-size: 12px; -fx-font-weight: bold;");
+        lbl.getStyleClass().add("field-label");
         return lbl;
     }
 

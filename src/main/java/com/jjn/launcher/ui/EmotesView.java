@@ -48,14 +48,12 @@ public class EmotesView {
 
         // Top Header Bar
         coinsLabel = new Label();
-        coinsLabel.setStyle(
-                "-fx-background-color: #202432; -fx-border-color: #c7d2fe; -fx-border-radius: 10;"
-                        + "-fx-background-radius: 10; -fx-padding: 7 14 7 14;"
-                        + "-fx-text-fill: #c7d2fe; -fx-font-size: 13px; -fx-font-weight: bold;"
-        );
+        coinsLabel.getStyleClass().add("coins-pill");
 
-        Label keyHint = UiUtils.mutedLabel("In-Game Keybind: Press [B] for Emote Wheel  •  Press [U] for Waypoints");
-        Button goShopBtn = UiUtils.secondaryButton("Earn Coins in Quests & Shop");
+        Label keyHint = UiUtils.mutedLabel("In-Game Keybind: [B] Emote Wheel  •  [U] Waypoints");
+        HBox.setHgrow(keyHint, Priority.SOMETIMES);
+        Button goShopBtn = UiUtils.secondaryButton("Quests & Shop");
+        goShopBtn.setMinWidth(Region.USE_PREF_SIZE);
         goShopBtn.setOnAction(e -> actions.openShopTab());
 
         Region headerGap = new Region();
@@ -67,7 +65,7 @@ public class EmotesView {
 
         feedbackLabel = new Label();
         feedbackLabel.setWrapText(true);
-        feedbackLabel.setStyle("-fx-text-fill: #86efac; -fx-font-size: 12px; -fx-font-weight: bold;");
+        feedbackLabel.getStyleClass().add("status-success");
         feedbackLabel.setVisible(false);
         feedbackLabel.setManaged(false);
 
@@ -77,14 +75,11 @@ public class EmotesView {
 
         StackPane stageFrame = new StackPane(previewCanvas);
         stageFrame.setPadding(new Insets(8));
-        stageFrame.setStyle(
-                "-fx-background-color: #101116; -fx-background-radius: 14;"
-                        + "-fx-border-color: #2b3040; -fx-border-radius: 14;"
-        );
+        stageFrame.getStyleClass().add("preview-frame");
 
         previewTitleLabel = new Label("Idle Stance (Click any emote to preview)");
         previewTitleLabel.setWrapText(true);
-        previewTitleLabel.setStyle("-fx-text-fill: #e5e7eb; -fx-font-size: 12px; -fx-font-weight: bold;");
+        previewTitleLabel.getStyleClass().add("card-title");
 
         Button replayBtn = UiUtils.secondaryButton("Replay");
         replayBtn.setOnAction(e -> {
@@ -191,13 +186,7 @@ public class EmotesView {
             slotBtn.setMaxWidth(Double.MAX_VALUE);
             slotBtn.setWrapText(true);
             boolean activeTarget = (i == selectedSlot);
-            slotBtn.setStyle(activeTarget
-                    ? "-fx-background-color: #2f3547; -fx-border-color: #c7d2fe; -fx-border-radius: 10;"
-                    + "-fx-background-radius: 10; -fx-text-fill: #c7d2fe; -fx-font-weight: bold; -fx-padding: 9 10 9 10; -fx-cursor: hand;"
-                    : "-fx-background-color: #15171e; -fx-border-color: #2b3040; -fx-border-radius: 10;"
-                    + "-fx-background-radius: 10; -fx-text-fill: " + (boundItem != null ? "#e5e7eb" : "#666b7a")
-                    + "; -fx-padding: 9 10 9 10; -fx-cursor: hand;"
-            );
+            slotBtn.getStyleClass().add(activeTarget ? "emote-slot-btn-active" : "emote-slot-btn");
             slotBtn.setOnAction(e -> {
                 selectedSlot = slotIdx;
                 if (boundItem != null) {
@@ -225,16 +214,24 @@ public class EmotesView {
                 }
             }
 
-            Label rarity = new Label(emote.rarity());
-            rarity.setStyle(
-                    "-fx-text-fill: " + emote.accentHex() + "; -fx-font-size: 10px; -fx-font-weight: bold;"
-                            + "-fx-background-color: #15171e; -fx-background-radius: 6; -fx-padding: 3 8 3 8;"
-            );
+            int discountPct = economy.getDiscountPercent(emote);
+            int finalPrice = economy.getEffectivePrice(emote);
+            boolean featuredDeal = economy.isFeaturedCreatorDeal(emote);
 
-            Label priceOrOwned = new Label(owned
-                    ? (boundSlot >= 0 ? "SLOT [" + (boundSlot + 1) + "]" : "UNLOCKED")
-                    : "◈ " + emote.price());
-            priceOrOwned.setStyle("-fx-text-fill: " + (owned ? "#86efac" : "#c7d2fe") + "; -fx-font-size: 11px; -fx-font-weight: bold;");
+            Label rarity = new Label(emote.rarity());
+            rarity.getStyleClass().add("badge-muted");
+            rarity.setStyle("-fx-text-fill: " + emote.accentHex() + ";");
+
+            String priceText;
+            if (owned) {
+                priceText = boundSlot >= 0 ? "SLOT [" + (boundSlot + 1) + "]" : "UNLOCKED";
+            } else if (discountPct > 0 && emote.price() > 0) {
+                priceText = "◈ " + finalPrice + " (was " + emote.price() + ")";
+            } else {
+                priceText = "◈ " + emote.price();
+            }
+            Label priceOrOwned = new Label(priceText);
+            priceOrOwned.getStyleClass().add(owned ? "status-success" : (discountPct > 0 ? "status-warning" : "accent-text"));
 
             Region rGap = new Region();
             HBox.setHgrow(rGap, Priority.ALWAYS);
@@ -242,18 +239,27 @@ public class EmotesView {
             topTags.setAlignment(Pos.CENTER_LEFT);
 
             Label title = new Label(emote.name());
-            title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 15px; -fx-font-weight: bold;");
+            title.getStyleClass().add("card-title");
+
+            HBox titleRow = new HBox(8, title);
+            titleRow.setAlignment(Pos.CENTER_LEFT);
+            if (!owned && discountPct > 0 && emote.price() > 0) {
+                Label dealBadge = new Label(featuredDeal ? "★ DEAL -" + discountPct + "%" : "-" + discountPct + "% CODE");
+                dealBadge.getStyleClass().add(featuredDeal ? "badge-warning" : "badge-accent");
+                titleRow.getChildren().add(dealBadge);
+            }
 
             Label desc = UiUtils.mutedLabel(emote.description());
             desc.setMinHeight(34);
 
             Button previewBtn = UiUtils.secondaryButton("Preview");
+            previewBtn.setMinWidth(Region.USE_PREF_SIZE);
             previewBtn.setOnAction(e -> startEmotePreview(emote));
 
             Button actionBtn;
             if (!owned) {
-                actionBtn = new Button("Unlock  ◈ " + emote.price());
-                actionBtn.getStyleClass().add(data.coins >= emote.price() ? "primary-button" : "secondary-button");
+                actionBtn = new Button("Unlock  ◈ " + finalPrice);
+                actionBtn.getStyleClass().add(data.coins >= finalPrice ? "primary-button" : "secondary-button");
                 actionBtn.setPadding(new Insets(8, 12, 8, 12));
                 actionBtn.setOnAction(e -> {
                     economy.purchaseItem(emote.id());
@@ -276,14 +282,16 @@ public class EmotesView {
                     refreshDynamicContent();
                 });
             }
+            actionBtn.setMinWidth(Region.USE_PREF_SIZE);
 
-            HBox btnRow = new HBox(8, previewBtn, actionBtn);
+            FlowPane btnRow = new FlowPane(8, 8, previewBtn, actionBtn);
             btnRow.setAlignment(Pos.CENTER_LEFT);
 
-            VBox card = UiUtils.card(topTags, title, desc, btnRow);
+            VBox card = UiUtils.card(topTags, titleRow, desc, btnRow);
             card.setPadding(new Insets(14));
             if (emote.id().equals(previewingEmoteId)) {
-                card.setStyle("-fx-background-color: #202432; -fx-background-radius: 15; -fx-border-color: #c7d2fe; -fx-border-radius: 15;");
+                card.getStyleClass().remove("panel-card");
+                card.getStyleClass().add("panel-card-active");
             }
             emotesGrid.add(card, idx % 2, idx / 2);
             idx++;

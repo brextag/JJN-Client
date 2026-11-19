@@ -145,10 +145,82 @@ public final class EconomyStore {
             new QuestDef("quest_emote_star", "Stage Star", "Perform 15 emotes in-game", false, 15, 250)
     );
 
+    public record CreatorCodeDef(
+            String code,
+            String creatorName,
+            int discountPercent,
+            int dealDiscountPercent,
+            List<String> featuredItemIds,
+            int bonusCoins,
+            String tagline
+    ) {}
+
+    public static final class CreatorState {
+        public String activeCode = "";
+        public Set<String> redeemedBonusCodes = new LinkedHashSet<>();
+    }
+
+    public static final class CustomCreatorCodesFile {
+        public List<CreatorCodeDef> codes = new ArrayList<>();
+    }
+
+    public static final List<CreatorCodeDef> BUILT_IN_CREATOR_CODES = List.of(
+            new CreatorCodeDef(
+                    "JJN",
+                    "JJN Official",
+                    20,
+                    35,
+                    List.of("cape_jjn_nova", "hat_crown", "back_angel_wings", "emote_backflip"),
+                    100,
+                    "20% off Shop + 35% off Featured Creator Deals + 100 ◈ bonus!"
+            ),
+            new CreatorCodeDef(
+                    "BLUE",
+                    "JJN Blue Team",
+                    20,
+                    40,
+                    List.of("cape_aurora", "back_cyber_jet", "aura_soulfire", "emote_salute"),
+                    75,
+                    "20% off Shop + 40% off Blue Cosmic Deals + 75 ◈ bonus!"
+            ),
+            new CreatorCodeDef(
+                    "VIP",
+                    "JJN VIP",
+                    30,
+                    45,
+                    List.of("cape_golden_monarch", "back_dragon_wings", "emote_breakdance"),
+                    150,
+                    "30% off entire Shop + 45% off Legendary Deals + 150 ◈ bonus!"
+            ),
+            new CreatorCodeDef(
+                    "WELCOME",
+                    "Welcome Bundle",
+                    15,
+                    30,
+                    List.of("hat_fox_ears", "aura_starlight", "emote_dab"),
+                    100,
+                    "15% off Shop + 30% off Starter Picks + 100 ◈ welcome gift!"
+            )
+    );
+
+    public static final String ADMIN_ACCESS_CODE = "JJNADMIN";
+
+    public static boolean isAdminCode(String rawCode) {
+        return ADMIN_ACCESS_CODE.equals(normalizeCode(rawCode));
+    }
+
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     public static Path economyFile() {
         return LauncherSettings.ROOT_DIR.resolve("economy.json");
+    }
+
+    public static Path creatorCodesFile() {
+        return LauncherSettings.ROOT_DIR.resolve("creator-codes.json");
+    }
+
+    public static Path creatorStateFile() {
+        return LauncherSettings.ROOT_DIR.resolve("creator-state.json");
     }
 
     public static CatalogItem findItem(String id) {
@@ -165,6 +237,189 @@ public final class EconomyStore {
             if (q.id().equals(id)) return q;
         }
         return null;
+    }
+
+    public static List<CreatorCodeDef> allCreatorCodes() {
+        Map<String, CreatorCodeDef> merged = new LinkedHashMap<>();
+        for (CreatorCodeDef def : BUILT_IN_CREATOR_CODES) {
+            String key = normalizeCode(def.code());
+            if (!key.isEmpty()) {
+                merged.put(key, def);
+            }
+        }
+        for (CreatorCodeDef custom : loadCustomCreatorCodes()) {
+            if (custom == null) continue;
+            String key = normalizeCode(custom.code());
+            if (key.isEmpty()) continue;
+            String creator = (custom.creatorName() == null || custom.creatorName().isBlank())
+                    ? key
+                    : custom.creatorName().trim();
+            int basePct = clampPercent(custom.discountPercent());
+            int dealPct = custom.dealDiscountPercent() > 0
+                    ? clampPercent(custom.dealDiscountPercent())
+                    : basePct;
+            List<String> featured = custom.featuredItemIds() == null
+                    ? List.of()
+                    : custom.featuredItemIds().stream().filter(Objects::nonNull).toList();
+            int bonus = Math.max(0, custom.bonusCoins());
+            String tag = (custom.tagline() == null || custom.tagline().isBlank())
+                    ? (basePct + "% off Shop" + (bonus > 0 ? " + " + bonus + " ◈ bonus" : ""))
+                    : custom.tagline().trim();
+            merged.put(key, new CreatorCodeDef(key, creator, basePct, dealPct, featured, bonus, tag));
+        }
+        return List.copyOf(merged.values());
+    }
+
+    public static CreatorCodeDef findCreatorCode(String rawCode) {
+        String key = normalizeCode(rawCode);
+        if (key.isEmpty()) return null;
+        for (CreatorCodeDef def : allCreatorCodes()) {
+            if (def.code().equals(key)) {
+                return def;
+            }
+        }
+        return null;
+    }
+
+    public static String normalizeCode(String rawCode) {
+        if (rawCode == null) return "";
+        return rawCode.trim().toUpperCase(Locale.ROOT);
+    }
+
+    public static boolean isFeaturedDeal(CreatorCodeDef code, CatalogItem item) {
+        if (code == null || item == null || code.featuredItemIds() == null) return false;
+        return code.featuredItemIds().contains(item.id());
+    }
+
+    public static int discountForItem(CreatorCodeDef code, CatalogItem item) {
+        if (code == null || item == null || item.price() <= 0) return 0;
+        if (isFeaturedDeal(code, item)) {
+            return clampPercent(Math.max(code.discountPercent(), code.dealDiscountPercent()));
+        }
+        return clampPercent(code.discountPercent());
+    }
+
+    public static int effectivePrice(CreatorCodeDef code, CatalogItem item) {
+        if (item == null) return 0;
+        int pct = discountForItem(code, item);
+        if (pct <= 0 || item.price() <= 0) return item.price();
+        return Math.max(1, (int) Math.round(item.price() * (100 - pct) / 100.0));
+    }
+
+    private static int clampPercent(int pct) {
+        return Math.max(0, Math.min(90, pct));
+    }
+
+    public static synchronized List<CreatorCodeDef> loadCustomCreatorCodes() {
+        Path file = creatorCodesFile();
+        if (!Files.isRegularFile(file)) {
+            try {
+                Files.createDirectories(file.getParent());
+                Files.writeString(file, GSON.toJson(new CustomCreatorCodesFile()), StandardCharsets.UTF_8);
+            } catch (IOException ignored) {
+            }
+            return List.of();
+        }
+        try {
+            String json = Files.readString(file, StandardCharsets.UTF_8);
+            if (json.trim().startsWith("[")) {
+                CreatorCodeDef[] arr = GSON.fromJson(json, CreatorCodeDef[].class);
+                return arr == null ? List.of() : Arrays.asList(arr);
+            }
+            CustomCreatorCodesFile parsed = GSON.fromJson(json, CustomCreatorCodesFile.class);
+            return parsed != null && parsed.codes != null ? parsed.codes : List.of();
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    public static synchronized void saveCustomCreatorCode(CreatorCodeDef def) {
+        if (def == null) return;
+        String key = normalizeCode(def.code());
+        if (key.isEmpty() || isAdminCode(key)) return;
+        String creator = (def.creatorName() == null || def.creatorName().isBlank()) ? key : def.creatorName().trim();
+        int basePct = clampPercent(def.discountPercent());
+        int dealPct = def.dealDiscountPercent() > 0 ? clampPercent(def.dealDiscountPercent()) : basePct;
+        List<String> featured = def.featuredItemIds() == null
+                ? List.of()
+                : def.featuredItemIds().stream().filter(Objects::nonNull).toList();
+        int bonus = Math.max(0, def.bonusCoins());
+        String tag = (def.tagline() == null || def.tagline().isBlank())
+                ? (basePct + "% off Shop" + (bonus > 0 ? " + " + bonus + " ◈ bonus" : ""))
+                : def.tagline().trim();
+        CreatorCodeDef clean = new CreatorCodeDef(key, creator, basePct, dealPct, featured, bonus, tag);
+
+        List<CreatorCodeDef> updated = new ArrayList<>();
+        for (CreatorCodeDef existing : loadCustomCreatorCodes()) {
+            if (existing != null && !normalizeCode(existing.code()).equals(key)) {
+                updated.add(existing);
+            }
+        }
+        updated.add(clean);
+        writeCustomCreatorCodesFile(updated);
+    }
+
+    public static synchronized boolean deleteCustomCreatorCode(String rawCode) {
+        String key = normalizeCode(rawCode);
+        if (key.isEmpty()) return false;
+        List<CreatorCodeDef> existing = loadCustomCreatorCodes();
+        List<CreatorCodeDef> remaining = new ArrayList<>();
+        boolean removed = false;
+        for (CreatorCodeDef def : existing) {
+            if (def != null && normalizeCode(def.code()).equals(key)) {
+                removed = true;
+            } else if (def != null) {
+                remaining.add(def);
+            }
+        }
+        if (removed) {
+            writeCustomCreatorCodesFile(remaining);
+        }
+        return removed;
+    }
+
+    private static void writeCustomCreatorCodesFile(List<CreatorCodeDef> codes) {
+        try {
+            Path file = creatorCodesFile();
+            Files.createDirectories(file.getParent());
+            CustomCreatorCodesFile wrapper = new CustomCreatorCodesFile();
+            wrapper.codes = new ArrayList<>(codes);
+            Path tmp = file.resolveSibling("creator-codes.json.tmp");
+            Files.writeString(tmp, GSON.toJson(wrapper), StandardCharsets.UTF_8);
+            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ignored) {
+        }
+    }
+
+    public synchronized CreatorState loadCreatorState() {
+        Path file = creatorStateFile();
+        CreatorState state = null;
+        if (Files.isRegularFile(file)) {
+            try {
+                state = GSON.fromJson(Files.readString(file, StandardCharsets.UTF_8), CreatorState.class);
+            } catch (Exception ignored) {
+            }
+        }
+        if (state == null) {
+            state = new CreatorState();
+        }
+        if (state.activeCode == null) {
+            state.activeCode = "";
+        }
+        if (state.redeemedBonusCodes == null) {
+            state.redeemedBonusCodes = new LinkedHashSet<>();
+        }
+        return state;
+    }
+
+    public synchronized void saveCreatorState(CreatorState state) {
+        try {
+            Files.createDirectories(creatorStateFile().getParent());
+            Path tmp = creatorStateFile().resolveSibling("creator-state.json.tmp");
+            Files.writeString(tmp, GSON.toJson(state), StandardCharsets.UTF_8);
+            Files.move(tmp, creatorStateFile(), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ignored) {
+        }
     }
 
     public synchronized EconomyData load() {

@@ -52,7 +52,8 @@ public class ProfilesView {
         ComboBox<ClientProfile> profilePicker = new ComboBox<>(
                 FXCollections.observableArrayList(store.profiles)
         );
-        profilePicker.setPrefWidth(210);
+        profilePicker.setPrefWidth(220);
+        profilePicker.setMaxWidth(Double.MAX_VALUE);
         if (active != null) {
             profilePicker.setValue(active);
         }
@@ -62,8 +63,12 @@ public class ProfilesView {
         Button renameBtn = UiUtils.secondaryButton("Rename");
         Button deleteBtn = UiUtils.dangerButton("Delete");
         deleteBtn.setDisable(store.profiles.size() <= 1);
+        for (Button b : List.of(newBtn, dupBtn, renameBtn, deleteBtn)) {
+            b.setMinWidth(Region.USE_PREF_SIZE);
+        }
 
         Button pullBtn = UiUtils.secondaryButton("Pull from Instance");
+        pullBtn.setMinWidth(Region.USE_PREF_SIZE);
         pullBtn.setDisable(instance == null);
 
         Button applyBtn = new Button(
@@ -71,6 +76,7 @@ public class ProfilesView {
         );
         applyBtn.getStyleClass().add("primary-button");
         applyBtn.setPadding(new Insets(9, 16, 9, 16));
+        applyBtn.setMinWidth(Region.USE_PREF_SIZE);
         applyBtn.setDisable(instance == null);
 
         Region topGap = new Region();
@@ -80,9 +86,15 @@ public class ProfilesView {
         profileLbl.getStyleClass().add("accent-text");
         VBox pickerCol = new VBox(4, profileLbl, profilePicker);
         pickerCol.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(pickerCol, Priority.SOMETIMES);
 
-        HBox topBar = new HBox(10, pickerCol, newBtn, dupBtn, renameBtn, deleteBtn, topGap, pullBtn, applyBtn);
-        topBar.setAlignment(Pos.CENTER_LEFT);
+        HBox topRow1 = new HBox(10, pickerCol, topGap, pullBtn, applyBtn);
+        topRow1.setAlignment(Pos.CENTER_LEFT);
+
+        FlowPane topRow2 = new FlowPane(8, 8, newBtn, dupBtn, renameBtn, deleteBtn);
+        topRow2.setAlignment(Pos.CENTER_LEFT);
+
+        VBox topBar = new VBox(10, topRow1, topRow2);
         topBar.getStyleClass().add("selection-bar");
 
         Label statusLabel = UiUtils.mutedLabel(
@@ -95,19 +107,17 @@ public class ProfilesView {
         SkinPreviewCanvas skinCanvas = new SkinPreviewCanvas(210, 240);
         StackPane previewFrame = new StackPane(skinCanvas);
         previewFrame.setPadding(new Insets(8));
-        previewFrame.setStyle(
-                "-fx-background-color: #101116; -fx-background-radius: 14;"
-                        + "-fx-border-color: #2b3040; -fx-border-radius: 14;"
-        );
+        previewFrame.getStyleClass().add("preview-frame");
 
-        Label dragHint = new Label("Drag character to rotate 3D preview");
-        dragHint.setStyle("-fx-text-fill: #85899a; -fx-font-size: 11px;");
+        Label dragHint = UiUtils.mutedLabel("Drag character to rotate 3D preview");
 
-        Button flipBtn = UiUtils.secondaryButton("Flip Front / Back");
+        Button flipBtn = UiUtils.secondaryButton("Flip View");
+        flipBtn.setMinWidth(Region.USE_PREF_SIZE);
         flipBtn.setOnAction(e -> skinCanvas.flipView());
         Button resetViewBtn = UiUtils.secondaryButton("Reset Angle");
+        resetViewBtn.setMinWidth(Region.USE_PREF_SIZE);
         resetViewBtn.setOnAction(e -> skinCanvas.setYaw(22.0));
-        HBox viewBtns = new HBox(8, flipBtn, resetViewBtn);
+        FlowPane viewBtns = new FlowPane(8, 8, flipBtn, resetViewBtn);
         viewBtns.setAlignment(Pos.CENTER);
 
         // Classic vs Slim arm toggle
@@ -116,10 +126,13 @@ public class ProfilesView {
         ToggleButton slimBtn = new ToggleButton("Slim (Alex)");
         classicBtn.getStyleClass().add("pill-toggle");
         slimBtn.getStyleClass().add("pill-toggle");
+        classicBtn.setMinWidth(Region.USE_PREF_SIZE);
+        slimBtn.setMinWidth(Region.USE_PREF_SIZE);
         classicBtn.setToggleGroup(armGroup);
         slimBtn.setToggleGroup(armGroup);
         HBox armSwitcher = new HBox(4, classicBtn, slimBtn);
         armSwitcher.getStyleClass().add("segmented-group");
+        armSwitcher.setMaxWidth(Region.USE_PREF_SIZE);
 
         // Local skin wardrobe picker
         List<Path> savedSkins = skinService.listSavedSkins();
@@ -141,19 +154,19 @@ public class ProfilesView {
             }
         });
 
-        Button importSkinBtn = UiUtils.secondaryButton("Import .png Skin...");
-        Button useAccountSkinBtn = UiUtils.secondaryButton("Use Account Skin");
+        Button importSkinBtn = UiUtils.secondaryButton("Import .png...");
+        Button useAccountSkinBtn = UiUtils.secondaryButton("Account Skin");
+        importSkinBtn.setMinWidth(Region.USE_PREF_SIZE);
+        useAccountSkinBtn.setMinWidth(Region.USE_PREF_SIZE);
+
         Button uploadMojangBtn = new Button("Upload Skin to Mojang");
         uploadMojangBtn.getStyleClass().add("primary-button");
         uploadMojangBtn.setPadding(new Insets(8, 14, 8, 14));
         uploadMojangBtn.setMaxWidth(Double.MAX_VALUE);
         uploadMojangBtn.setDisable(auth == null || auth.minecraftAccessToken == null);
 
-        HBox skinFileBtns = new HBox(8, importSkinBtn, useAccountSkinBtn);
-        HBox.setHgrow(importSkinBtn, Priority.ALWAYS);
-        HBox.setHgrow(useAccountSkinBtn, Priority.ALWAYS);
-        importSkinBtn.setMaxWidth(Double.MAX_VALUE);
-        useAccountSkinBtn.setMaxWidth(Double.MAX_VALUE);
+        FlowPane skinFileBtns = new FlowPane(8, 8, importSkinBtn, useAccountSkinBtn);
+        skinFileBtns.setAlignment(Pos.CENTER_LEFT);
 
         // Capes section
         ComboBox<MinecraftSkinService.CapeInfo> capeBox = new ComboBox<>();
@@ -189,6 +202,7 @@ public class ProfilesView {
         Button applyCapeBtn = new Button("Apply Cape");
         applyCapeBtn.getStyleClass().add("primary-button");
         applyCapeBtn.setPadding(new Insets(7, 12, 7, 12));
+        applyCapeBtn.setMinWidth(Region.USE_PREF_SIZE);
         applyCapeBtn.setDisable(auth == null || auth.minecraftAccessToken == null);
         HBox capeRow = new HBox(8, capeBox, applyCapeBtn);
         HBox.setHgrow(capeBox, Priority.ALWAYS);
@@ -207,8 +221,8 @@ public class ProfilesView {
                 new Label("Mojang Cape"),
                 capeRow
         );
-        leftCard.setPrefWidth(340);
-        leftCard.setMinWidth(320);
+        leftCard.setPrefWidth(345);
+        leftCard.setMinWidth(335);
 
         // RIGHT CARD: Profile HUD & Module Customizations
         CheckBox customTitleCheck = new CheckBox("JJN Custom Front Screen (In-Game Home)");

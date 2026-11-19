@@ -72,11 +72,7 @@ public class InstancesView {
         );
         list.setPrefHeight(460);
         VBox.setVgrow(list, Priority.ALWAYS);
-        list.setStyle(
-                "-fx-background-color: transparent;" +
-                        "-fx-control-inner-background: transparent;" +
-                        "-fx-background-insets: 0;"
-        );
+        list.getStyleClass().add("transparent-list");
 
         list.setCellFactory(view -> new ListCell<>() {
             @Override
@@ -86,12 +82,11 @@ public class InstancesView {
                 if (empty || instance == null) {
                     setGraphic(null);
                     setText(null);
-                    setStyle("-fx-background-color: transparent;");
                     return;
                 }
 
                 Label name = new Label(instance.name);
-                name.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 16px; -fx-font-weight: bold;");
+                name.getStyleClass().add("card-title");
 
                 Label info = new Label(instance.displaySummary());
                 info.getStyleClass().add("muted-text");
@@ -101,14 +96,7 @@ public class InstancesView {
 
                 if (instance == selectedInstance) {
                     Label badge = new Label("SELECTED");
-                    badge.setStyle(
-                            "-fx-background-color: #292d3b;" +
-                                    "-fx-text-fill: #c7d2fe;" +
-                                    "-fx-font-size: 10px;" +
-                                    "-fx-font-weight: bold;" +
-                                    "-fx-padding: 3 8 3 8;" +
-                                    "-fx-background-radius: 999;"
-                    );
+                    badge.getStyleClass().add("badge-accent");
                     titleRow.getChildren().add(badge);
                 }
 
@@ -118,14 +106,7 @@ public class InstancesView {
                             ? "FABRIC • JJN UI"
                             : instance.loaderDisplayName().toUpperCase();
                     Label loaderBadge = new Label(loaderText);
-                    loaderBadge.setStyle(
-                            "-fx-background-color: #202432;" +
-                                    "-fx-text-fill: " + (hasJjnUi ? "#c7d2fe" : "#a2a6b5") + ";" +
-                                    "-fx-font-size: 10px;" +
-                                    "-fx-font-weight: bold;" +
-                                    "-fx-padding: 3 8 3 8;" +
-                                    "-fx-background-radius: 999;"
-                    );
+                    loaderBadge.getStyleClass().add(hasJjnUi ? "badge-accent" : "badge-muted");
                     titleRow.getChildren().add(loaderBadge);
                 }
 
@@ -161,13 +142,12 @@ public class InstancesView {
 
                 HBox card = new HBox(15, details, gap, actionsRow);
                 card.setAlignment(Pos.CENTER_LEFT);
-                card.setPadding(new Insets(18));
-                card.getStyleClass().add("panel-card");
+                card.setPadding(new Insets(16));
+                card.getStyleClass().add(instance == selectedInstance ? "panel-card-active" : "panel-card");
 
                 setGraphic(card);
                 setText(null);
                 setPadding(new Insets(5, 0, 5, 0));
-                setStyle("-fx-background-color: transparent;");
             }
         });
 
@@ -193,7 +173,7 @@ public class InstancesView {
 
         ListView<Path> modList = new ListView<>();
         modList.setPrefSize(520, 320);
-        modList.setStyle("-fx-control-inner-background: #101116; -fx-background-color: #101116;");
+        modList.getStyleClass().add("dark-list");
 
         Supplier<List<Path>> scanMods = () -> {
             List<Path> found = new ArrayList<>();
@@ -220,7 +200,6 @@ public class InstancesView {
                 if (empty || modPath == null) {
                     setGraphic(null);
                     setText(null);
-                    setStyle("-fx-background-color: transparent;");
                     return;
                 }
 
@@ -231,10 +210,10 @@ public class InstancesView {
                         : fileName;
 
                 Label nameLbl = new Label(displayName);
-                nameLbl.setStyle("-fx-text-fill: " + (disabled ? "#64748b" : "#f8fafc") + "; -fx-font-weight: bold;");
+                nameLbl.getStyleClass().add(disabled ? "card-title-muted" : "card-title");
 
                 Label stateLbl = new Label(disabled ? "DISABLED" : "ENABLED");
-                stateLbl.setStyle("-fx-text-fill: " + (disabled ? "#f59e0b" : "#34d399") + "; -fx-font-size: 10px; -fx-font-weight: bold;");
+                stateLbl.getStyleClass().add(disabled ? "badge-warning" : "badge-success");
 
                 Button toggleBtn = UiUtils.secondaryButton(disabled ? "Enable" : "Disable");
                 toggleBtn.setOnAction(e -> {
@@ -267,7 +246,6 @@ public class InstancesView {
                 row.setPadding(new Insets(6));
                 setGraphic(row);
                 setText(null);
-                setStyle("-fx-background-color: transparent;");
             }
         });
 
@@ -327,18 +305,23 @@ public class InstancesView {
         UiUtils.styleDialog(dialog);
 
         TextField ramField = new TextField(instance.ramMbOverride > 0 ? String.valueOf(instance.ramMbOverride) : "");
+        ramField.getStyleClass().add("input-field");
         ramField.setPromptText("0 or empty = inherit global");
 
         TextField widthField = new TextField(instance.customWidth > 0 ? String.valueOf(instance.customWidth) : "");
+        widthField.getStyleClass().add("input-field");
         widthField.setPromptText("Width (e.g. 1280)");
 
         TextField heightField = new TextField(instance.customHeight > 0 ? String.valueOf(instance.customHeight) : "");
+        heightField.getStyleClass().add("input-field");
         heightField.setPromptText("Height (e.g. 720)");
 
         TextField serverField = new TextField(instance.quickPlayServer == null ? "" : instance.quickPlayServer);
+        serverField.getStyleClass().add("input-field");
         serverField.setPromptText("Optional server (e.g. mc.hypixel.net)");
 
         TextField jvmField = new TextField(instance.jvmArgs == null ? "" : instance.jvmArgs);
+        jvmField.getStyleClass().add("input-field");
         jvmField.setPromptText("Extra JVM arguments for this instance");
 
         HBox resRow = new HBox(10, widthField, new Label("x"), heightField);

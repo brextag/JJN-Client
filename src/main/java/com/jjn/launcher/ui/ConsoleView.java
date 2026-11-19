@@ -60,10 +60,14 @@ public class ConsoleView {
         Label desc = UiUtils.mutedLabel(
                 "Live output from the running Minecraft process. Helpful for debugging mods or crashes."
         );
+        HBox.setHgrow(desc, Priority.SOMETIMES);
 
         Button copyBtn = UiUtils.secondaryButton("Copy logs");
+        copyBtn.setMinWidth(Region.USE_PREF_SIZE);
         Button openLogFolderBtn = UiUtils.secondaryButton("Open logs folder");
+        openLogFolderBtn.setMinWidth(Region.USE_PREF_SIZE);
         Button clearBtn = UiUtils.secondaryButton("Clear");
+        clearBtn.setMinWidth(Region.USE_PREF_SIZE);
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);

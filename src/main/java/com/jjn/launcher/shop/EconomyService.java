@@ -14,6 +14,7 @@ public final class EconomyService {
 
     private final EconomyStore store = new EconomyStore();
     private volatile EconomyStore.EconomyData data = new EconomyStore.EconomyData();
+    private volatile EconomyStore.CreatorState creatorState = new EconomyStore.CreatorState();
     private volatile long lastLoadedMtime = -1L;
     private volatile boolean started = false;
     private volatile boolean running = true;
@@ -55,6 +56,7 @@ public final class EconomyService {
 
     public synchronized void reloadFromDisk() {
         this.data = store.load();
+        this.creatorState = store.loadCreatorState();
         this.lastLoadedMtime = readMtime();
         notifyListeners();
     }
@@ -94,6 +96,62 @@ public final class EconomyService {
 
     public String getLastMessage() {
         return lastMessage;
+    }
+
+    public EconomyStore.CreatorCodeDef getActiveCreatorCode() {
+        return EconomyStore.findCreatorCode(creatorState.activeCode);
+    }
+
+    public synchronized boolean applyCreatorCode(String rawCode) {
+        String normalized = EconomyStore.normalizeCode(rawCode);
+        if (normalized.isEmpty()) {
+            lastMessage = "Enter a Creator Code first (e.g. JJN, BLUE, VIP, WELCOME).";
+            notifyListeners();
+            return false;
+        }
+        EconomyStore.CreatorCodeDef def = EconomyStore.findCreatorCode(normalized);
+        if (def == null) {
+            lastMessage = "Unknown Creator Code \"" + normalized + "\". Check the spelling or creator-codes.json.";
+            notifyListeners();
+            return false;
+        }
+
+        creatorState.activeCode = def.code();
+        int bonus = 0;
+        if (def.bonusCoins() > 0 && !creatorState.redeemedBonusCodes.contains(def.code())) {
+            bonus = def.bonusCoins();
+            creatorState.redeemedBonusCodes.add(def.code());
+            data.coins += bonus;
+            data.totalEarned += bonus;
+            store.save(data);
+            lastLoadedMtime = readMtime();
+        }
+        store.saveCreatorState(creatorState);
+
+        lastMessage = "Creator Code [" + def.code() + "] active (" + def.creatorName() + "): "
+                + def.tagline()
+                + (bonus > 0 ? " Claimed +" + bonus + " ◈ bonus!" : "");
+        notifyListeners();
+        return true;
+    }
+
+    public synchronized void clearCreatorCode() {
+        creatorState.activeCode = "";
+        store.saveCreatorState(creatorState);
+        lastMessage = "Cleared active Creator Code.";
+        notifyListeners();
+    }
+
+    public int getDiscountPercent(EconomyStore.CatalogItem item) {
+        return EconomyStore.discountForItem(getActiveCreatorCode(), item);
+    }
+
+    public int getEffectivePrice(EconomyStore.CatalogItem item) {
+        return EconomyStore.effectivePrice(getActiveCreatorCode(), item);
+    }
+
+    public boolean isFeaturedCreatorDeal(EconomyStore.CatalogItem item) {
+        return EconomyStore.isFeaturedDeal(getActiveCreatorCode(), item);
     }
 
     public boolean isOwned(String itemId) {
@@ -136,20 +194,25 @@ public final class EconomyService {
             notifyListeners();
             return true;
         }
-        if (data.coins < item.price()) {
-            int need = item.price() - data.coins;
+        int cost = getEffectivePrice(item);
+        if (data.coins < cost) {
+            int need = cost - data.coins;
             lastMessage = "Need " + need + " more JJN Coins for " + item.name() + " — complete Quests to earn Coins!";
             notifyListeners();
             return false;
         }
-        data.coins -= item.price();
+        data.coins -= cost;
         data.ownedItems.add(itemId);
         if (item.category() == EconomyStore.Category.EMOTE) {
             assignToFirstEmptyWheelSlot(itemId);
         } else {
             applyEquipInternal(item);
         }
-        lastMessage = "Unlocked " + item.name() + "!";
+        EconomyStore.CreatorCodeDef activeCode = getActiveCreatorCode();
+        int saved = Math.max(0, item.price() - cost);
+        lastMessage = saved > 0 && activeCode != null
+                ? "Unlocked " + item.name() + " with Code [" + activeCode.code() + "] (saved " + saved + " ◈)!"
+                : "Unlocked " + item.name() + "!";
         saveAndTrack();
         return true;
     }
@@ -236,5 +299,125 @@ public final class EconomyService {
         if (val > cur) {
             data.questProgress.put(questId, val);
         }
+    }
+
+    // --- ADMIN CONTROLS ---
+
+    public synchronized void adminGiftCoins(int amount) {
+        if (amount == 0) return;
+        int next = Math.max(0, data.coins + amount);
+        int delta = next - data.coins;
+        data.coins = next;
+        if (delta > 0) {
+            data.totalEarned += delta;
+            lastMessage = "[ADMIN] Gifted +" + delta + " JJN Coins! Balance: " + data.coins + " ◈";
+        } else {
+            lastMessage = "[ADMIN] Adjusted balance by " + delta + " ◈. Balance: " + data.coins + " ◈";
+        }
+        saveAndTrack();
+    }
+
+    public synchronized void adminSetCoins(int amount) {
+        int clamped = Math.max(0, amount);
+        if (clamped > data.coins) {
+            data.totalEarned += (clamped - data.coins);
+        }
+        data.coins = clamped;
+        lastMessage = "[ADMIN] Set balance to " + data.coins + " ◈.";
+        saveAndTrack();
+    }
+
+    public synchronized void adminGrantItem(String itemId) {
+        EconomyStore.CatalogItem item = EconomyStore.findItem(itemId);
+        if (item == null) return;
+        data.ownedItems.add(item.id());
+        if (item.category() == EconomyStore.Category.EMOTE) {
+            assignToFirstEmptyWheelSlot(item.id());
+        } else {
+            applyEquipInternal(item);
+        }
+        lastMessage = "[ADMIN] Granted & equipped \"" + item.name() + "\"!";
+        saveAndTrack();
+    }
+
+    public synchronized void adminRevokeItem(String itemId) {
+        if ("emote_wave".equals(itemId)) {
+            lastMessage = "[ADMIN] Starter emote \"Friendly Wave\" cannot be removed.";
+            notifyListeners();
+            return;
+        }
+        EconomyStore.CatalogItem item = EconomyStore.findItem(itemId);
+        if (item == null) return;
+        data.ownedItems.remove(itemId);
+        if (itemId.equals(data.equippedCapeId)) data.equippedCapeId = "";
+        if (itemId.equals(data.equippedBackId)) data.equippedBackId = "";
+        if (itemId.equals(data.equippedHatId)) data.equippedHatId = "";
+        if (itemId.equals(data.equippedAuraId)) data.equippedAuraId = "";
+        for (int i = 0; i < data.emoteWheel.size(); i++) {
+            if (itemId.equals(data.emoteWheel.get(i))) {
+                data.emoteWheel.set(i, "");
+            }
+        }
+        lastMessage = "[ADMIN] Revoked \"" + item.name() + "\".";
+        saveAndTrack();
+    }
+
+    public synchronized void adminUnlockAllItems() {
+        for (EconomyStore.CatalogItem item : EconomyStore.CATALOG) {
+            data.ownedItems.add(item.id());
+            if (item.category() == EconomyStore.Category.EMOTE) {
+                assignToFirstEmptyWheelSlot(item.id());
+            }
+        }
+        lastMessage = "[ADMIN] Unlocked all " + EconomyStore.CATALOG.size() + " Shop cosmetics & emotes!";
+        saveAndTrack();
+    }
+
+    public synchronized void adminResetToStarter() {
+        data.ownedItems.clear();
+        data.ownedItems.add("emote_wave");
+        data.equippedCapeId = "";
+        data.equippedBackId = "";
+        data.equippedHatId = "";
+        data.equippedAuraId = "";
+        data.emoteWheel.clear();
+        data.emoteWheel.add("emote_wave");
+        while (data.emoteWheel.size() < 8) data.emoteWheel.add("");
+        lastMessage = "[ADMIN] Reset owned items & equipped slots to starter.";
+        saveAndTrack();
+    }
+
+    public synchronized void adminCompleteAllQuests() {
+        for (EconomyStore.QuestDef q : EconomyStore.QUESTS) {
+            data.questProgress.put(q.id(), q.target());
+        }
+        lastMessage = "[ADMIN] Completed progress on all Quests — ready to claim!";
+        saveAndTrack();
+    }
+
+    public synchronized void adminResetQuests() {
+        data.questProgress.clear();
+        data.claimedQuests.clear();
+        lastMessage = "[ADMIN] Reset all Quest progress & claims.";
+        saveAndTrack();
+    }
+
+    public synchronized void adminSaveCreatorCode(EconomyStore.CreatorCodeDef def) {
+        EconomyStore.saveCustomCreatorCode(def);
+        lastMessage = "[ADMIN] Saved custom Creator Code [" + EconomyStore.normalizeCode(def.code()) + "]!";
+        notifyListeners();
+    }
+
+    public synchronized boolean adminDeleteCreatorCode(String code) {
+        boolean removed = EconomyStore.deleteCustomCreatorCode(code);
+        if (removed) {
+            if (EconomyStore.normalizeCode(code).equals(creatorState.activeCode)) {
+                creatorState.activeCode = "";
+                store.saveCreatorState(creatorState);
+            }
+            lastMessage = "[ADMIN] Deleted custom Creator Code [" + EconomyStore.normalizeCode(code) + "].";
+            notifyListeners();
+        }
+        return removed;
     }
 }

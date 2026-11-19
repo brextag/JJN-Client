@@ -65,7 +65,7 @@ public class FriendsView {
         // 1. Relay & Network Connection Card
         Label netTitle = UiUtils.sectionTitle("Network & Relay Server");
         relayStatusLabel = new Label();
-        relayStatusLabel.setStyle("-fx-text-fill: #c7d2fe; -fx-font-size: 12px; -fx-font-weight: bold;");
+        relayStatusLabel.getStyleClass().add("accent-text");
 
         Label netHint = UiUtils.mutedLabel(
                 "LAN & VPN (Tailscale / Radmin) work automatically with zero setup. "
@@ -91,16 +91,13 @@ public class FriendsView {
         relayTestLabel.setManaged(false);
         testRelayBtn.setOnAction(e -> {
             testRelayBtn.setDisable(true);
-            relayTestLabel.setStyle("-fx-text-fill: #c7d2fe; -fx-font-size: 12px; -fx-font-weight: bold;");
+            relayTestLabel.getStyleClass().setAll("accent-text");
             relayTestLabel.setText("Pinging Relay server...");
             relayTestLabel.setVisible(true);
             relayTestLabel.setManaged(true);
             service.testRelayConnection(relayField.getText(), res -> Platform.runLater(() -> {
                 testRelayBtn.setDisable(false);
-                relayTestLabel.setStyle((res.reachable()
-                        ? "-fx-text-fill: #86efac;"
-                        : "-fx-text-fill: #fca5a5;")
-                        + " -fx-font-size: 12px; -fx-font-weight: bold;");
+                relayTestLabel.getStyleClass().setAll(res.reachable() ? "status-success" : "status-danger");
                 relayTestLabel.setText((res.reachable() ? "✓ " : "✕ ") + res.message());
             }));
         });
@@ -121,7 +118,7 @@ public class FriendsView {
 
         noticeLabel = new Label();
         noticeLabel.setWrapText(true);
-        noticeLabel.setStyle("-fx-text-fill: #86efac; -fx-font-size: 12px; -fx-font-weight: bold;");
+        noticeLabel.getStyleClass().add("status-success");
 
         VBox networkCard = new VBox(8, netTitle, relayStatusLabel, netHint, relayRow, relayTestLabel, noticeLabel);
         networkCard.setPadding(new Insets(16));
@@ -182,9 +179,7 @@ public class FriendsView {
 
         String statusPrefix = service.isRelayConnected() ? "● Connected  •  " : "○ ";
         relayStatusLabel.setText(statusPrefix + service.getRelayStatusText());
-        relayStatusLabel.setStyle(service.isRelayConnected()
-                ? "-fx-text-fill: #86efac; -fx-font-size: 12px; -fx-font-weight: bold;"
-                : "-fx-text-fill: #c7d2fe; -fx-font-size: 12px; -fx-font-weight: bold;");
+        relayStatusLabel.getStyleClass().setAll(service.isRelayConnected() ? "status-success" : "accent-text");
 
         String notice = service.getLastNotice();
         if (notice == null || notice.isBlank()) {
@@ -208,7 +203,7 @@ public class FriendsView {
             invitesBox.getChildren().add(UiUtils.sectionTitle("World Invites (" + invites.size() + ")"));
             for (FriendsService.WorldInvite inv : invites) {
                 Label title = new Label(inv.fromName + " invited you to join \"" + inv.worldName + "\"");
-                title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 13px; -fx-font-weight: bold;");
+                title.getStyleClass().add("card-title");
                 Label sub = UiUtils.mutedLabel(
                         (inv.mcVersion != null && !inv.mcVersion.isBlank() ? "Minecraft " + inv.mcVersion + "  •  " : "")
                                 + "Private world invite"
@@ -246,7 +241,7 @@ public class FriendsView {
             requestsBox.getChildren().add(UiUtils.sectionTitle("Friend Requests"));
             for (FriendsStore.FriendRequestEntry req : incoming) {
                 Label lbl = new Label(req.username + " wants to add you as a friend");
-                lbl.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 13px; -fx-font-weight: bold;");
+                lbl.getStyleClass().add("card-title");
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
                 Button accept = new Button("Accept");
@@ -263,8 +258,7 @@ public class FriendsView {
                 requestsBox.getChildren().add(card);
             }
             for (FriendsStore.FriendRequestEntry req : outgoing) {
-                Label lbl = new Label("Outgoing request to " + req.username);
-                lbl.setStyle("-fx-text-fill: #a2a6b5; -fx-font-size: 12px;");
+                Label lbl = UiUtils.mutedLabel("Outgoing request to " + req.username);
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
                 Button cancel = UiUtils.secondaryButton("Cancel");
@@ -313,7 +307,7 @@ public class FriendsView {
             nearbyBox.getChildren().add(UiUtils.sectionTitle("Nearby LAN / VPN Players (" + nearby.size() + ")"));
             for (FriendsService.PeerStatus lp : nearby) {
                 Label name = new Label(lp.username);
-                name.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 13px; -fx-font-weight: bold;");
+                name.getStyleClass().add("card-title");
                 Label activity = UiUtils.mutedLabel(formatActivity(lp));
                 VBox col = new VBox(2, name, activity);
                 Region spacer = new Region();
@@ -334,11 +328,11 @@ public class FriendsView {
     private HBox buildFriendRow(FriendsService.PeerStatus friend, String knownSkinUrl, FriendsService service) {
         Circle dot = new Circle(5);
         if (friend.online && friend.isJoinable()) {
-            dot.setFill(Color.web("#86efac"));
+            dot.setFill(Color.web("#22C55E"));
         } else if (friend.online) {
-            dot.setFill(Color.web("#c7d2fe"));
+            dot.setFill(ThemeManager.accentColor());
         } else {
-            dot.setFill(Color.web("#4b5563"));
+            dot.setFill(Color.web("#64748B"));
         }
 
         ImageView avatar = new ImageView();
@@ -355,10 +349,10 @@ public class FriendsView {
 
         ImageView badge = UiUtils.creeperBadgeView(14);
         Label nameLbl = new Label(friend.username != null && !friend.username.isBlank() ? friend.username : friend.uuid);
-        nameLbl.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 14px; -fx-font-weight: bold;");
+        nameLbl.getStyleClass().add("card-title");
 
         Label pill = new Label(badgeText(friend));
-        pill.setStyle(badgeStyle(friend));
+        pill.getStyleClass().add(badgeStyleClass(friend));
 
         HBox topLine = new HBox(7, badge, nameLbl, pill);
         topLine.setAlignment(Pos.CENTER_LEFT);
@@ -420,14 +414,14 @@ public class FriendsView {
         return "IN LAUNCHER";
     }
 
-    private static String badgeStyle(FriendsService.PeerStatus p) {
+    private static String badgeStyleClass(FriendsService.PeerStatus p) {
         if (!p.online) {
-            return "-fx-background-color: #20222c; -fx-text-fill: #6b7280; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8 2 8; -fx-background-radius: 999;";
+            return "badge-muted";
         }
         if (p.hosting) {
-            return "-fx-background-color: #1f3328; -fx-text-fill: #86efac; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8 2 8; -fx-background-radius: 999;";
+            return "badge-success";
         }
-        return "-fx-background-color: #202432; -fx-text-fill: #c7d2fe; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8 2 8; -fx-background-radius: 999;";
+        return "badge-accent";
     }
 
     private static String formatActivity(FriendsService.PeerStatus p) {
